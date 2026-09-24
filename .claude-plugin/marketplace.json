@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "tangent-9-agent-skills",
+  "description": "Agent skills from Tangent 9, packaged as Claude Code plugins. Includes the TINA mini app build skill.",
+  "owner": {
+    "name": "Tangent 9",
+    "url": "https://github.com/Tangent-9"
+  },
+  "plugins": [
+    {
+      "name": "tina-miniapp",
+      "description": "Build a TINA mini app end to end: scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and backend, run it in the local sandbox, then validate and submit.",
+      "author": {
+        "name": "Tangent 9"
+      },
+      "category": "development",
+      "source": "./plugins/tina-miniapp",
+      "homepage": "https://github.com/Tangent-9/agent-skills",
+      "keywords": ["tina", "miniapp", "skill", "sdk"]
+    }
+  ]
+}
