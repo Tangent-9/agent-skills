@@ -14,6 +14,15 @@ the sandbox. You can also name it directly.
 
 ## Install
 
+With the [skills](https://github.com/vercel-labs/skills) CLI, for Claude Code or any other
+agent it supports:
+
+```bash
+npx skills add Tangent-9/agent-skills --skill tina-miniapp
+```
+
+Or as a Claude Code plugin:
+
 ```bash
 claude plugin marketplace add Tangent-9/agent-skills
 ```
