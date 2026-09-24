@@ -1,6 +1,6 @@
 ---
 name: tina-miniapp
-description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend, run it locally in the sandbox, then check and submit it. Use this whenever someone wants to build, extend, debug, test or ship an app for the TINA workspace, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-sandbox, app scopes and plans, lifecycle hooks, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA" or names a template instead of saying "mini app".
+description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend, run it locally in the sandbox, then check and submit it. Use this whenever someone wants to build, extend, debug, test or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-sandbox, app scopes and plans, lifecycle hooks, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA" or names a template instead of saying "mini app".
 ---
 
 # Build a TINA mini app
@@ -30,7 +30,9 @@ npx @tangent-9/create-tina-miniapp <dir> --template <name>
 `agent-companion` is a manifest and a README, nothing to install. That matters for one
 thing only: with no `node_modules` there is no local `tina-miniapp` binary, so its commands
 are `npx @tangent-9/create-tina-miniapp <cmd>`. The other two templates depend on the CLI,
-so `npx tina-miniapp <cmd>` resolves locally.
+so `npx tina-miniapp <cmd>` resolves locally. `agent-companion` has no `dev` scripts either,
+so `dev --sandbox` does not apply to it. Run the sandbox on its own with
+`npx -p @tangent-9/miniapps-sdk tina-sandbox`.
 
 After `npm install`, read `node_modules/@tangent-9/miniapps-sdk/README.md`. It is the SDK's
 own reference, it ships with the exact version installed, and it is more current than
@@ -47,16 +49,22 @@ npx tina-miniapp pack           # a .tinapkg of the manifest and listing assets
 TINA_PARTNER_KEY=tinapk_… npx tina-miniapp submit
 ```
 
+`submit` finds the app by the manifest's `name`, so a listing with exactly that name must
+already exist in the partner portal. Create it there first.
+
 Run `validate` after every manifest edit rather than at the end. It carries the platform's
 schema, so what it accepts is what upload accepts, and its messages name the field.
 
-The listing's logo is `assets/icon.png` (or `.jpg`, `.webp`): square, up to 512 KB, and
-`submit` uploads it. SVG is refused, because the platform serves logos to anyone and an
+The listing's logo is `assets/icon.png` (or `.jpg`, `.jpeg`, `.webp`), up to 512 KB. Make it
+square: nothing checks, but the catalogue draws it in a square. `submit` uploads it. SVG is refused, because the platform serves logos to anyone and an
 SVG can carry script. Without one, the catalogue shows the app's initial.
 
-`doctor` needs the app running. It catches the two failures that otherwise surface as a
-blank frame in front of a customer: a missing `frame-ancestors` header, and a hook endpoint
-that does not answer the registration challenge.
+`doctor` needs the app running. It checks framing against the workspace origin
+(`--workspace` or `TINA_WORKSPACE_URL`, default `http://localhost:3911`). It fails on
+`X-Frame-Options: DENY` or `SAMEORIGIN` and on a `frame-ancestors` that leaves the workspace
+out, and warns when there is no `frame-ancestors` at all. Those surface as a blank frame in
+front of a customer. With `TINA_PARTNER_KEY` set it also sends the registration challenge
+to the hook endpoint. Without the key it only checks that an unsigned hook is refused.
 
 ## Run it before TINA knows about it
 
@@ -72,7 +80,7 @@ Use it for what is hard to reach on a real workspace:
 - Switch the person, their roles and what they granted, then relaunch. A declined scope
   should degrade, not break the screen.
 - Kill or expire the session, and check the app shows its ended state.
-- Send any hook, obligations included, and watch the acknowledgement land:
+- Send any hook, obligations included (they need a `hooks.url`), and watch the acknowledgement land:
   `npx tina-sandbox hook user.deletion_requested`.
 - Run the check submit runs: `npx tina-sandbox challenge`.
 
@@ -157,7 +165,7 @@ None of it is required. A partner with their own design system should use it: re
 `--tina-*` on `:root` carries the kit along, and an app styled entirely its own way passes
 review and runs fine. Ask which the partner wants rather than assuming the default.
 
-One thing the stylesheet cannot do for you. It names the two faces the workspace uses and
+One thing the stylesheet cannot do for you. It names the faces the workspace uses and
 falls back to the system stack, but it loads neither, because a stylesheet that fetches
 fonts leaves an app no way out. The templates carry the link in `index.html`, so a
 scaffolded project is already right; a page you built another way needs it:
@@ -169,7 +177,7 @@ scaffolded project is already right; a page you built another way needs it:
 ```
 
 Without it the app renders in the system face inside chrome that does not, and the seam
-shows. Self-hosting the files is the same change on one line; both faces are OFL.
+shows. Self-hosting the files is the same change on one line; all three families are OFL.
 
 Read `node_modules/@tangent-9/miniapps-sdk/DESIGN.md` before designing a screen. It says
 what each token is for, which component does which job, and which few things the workspace
@@ -184,10 +192,22 @@ are Ed25519-signed and checked against a public key set.
 
 ```ts
 import { createTina } from "@tangent-9/miniapps-sdk/server";
-const tina = createTina({ appId: process.env.TINA_APP_ID, issuer: process.env.TINA_ISSUER });
+const tina = createTina({ appId: process.env.TINA_APP_ID!, issuer: process.env.TINA_ISSUER! });
 ```
 
-Three things reliably go wrong here:
+Add `credential: process.env.TINA_APP_CREDENTIAL` (a `tinaak_…` a platform admin issues)
+only when the backend calls TINA back: `tina.api.notify()` under a declared `notifications`
+category, or `tina.api.subscribers()`. Verifying needs no credential.
+
+**Answer the registration challenge first.** At submit and again at publish TINA sends a
+challenge to `hooks.url`. A plain 200 fails. Echo the nonce before any of the app's logic:
+
+```ts
+const { event, deliveryId, challenge } = await tina.verifyHook({ headers: req.headers, rawBody: req.rawBody });
+if (challenge) return reply.send({ challenge });
+```
+
+Three more things reliably go wrong here:
 
 **Hook signatures cover raw bytes.** Verify against `req.rawBody`. A body that has been
 through `JSON.parse` and back is a different string and will not verify, and most web
@@ -197,22 +217,34 @@ frameworks parse before your handler sees it. Configure the raw body first.
 do not cache the claims. Holding them past `exp` keeps a revoked scope alive, which is why
 `exp` is enforced with no tolerance.
 
-**Obligations arrive whether or not the manifest asks for them.**
-`user.deletion_requested`, `tenant.offboarding` and `data.export_requested` carry data
-protection duties TINA cannot discharge, because TINA does not hold the app's records. Each
-arrives with an `ack_token`. Act, then acknowledge, even when the answer is
-`not_applicable`. One nobody answers is escalated to platform staff with the app named.
+**Obligations arrive at any app with a `hooks.url`, whether or not `hooks.events` lists
+them.** `user.deletion_requested`, `tenant.offboarding` and `data.export_requested` carry
+data protection duties TINA cannot discharge, because TINA does not hold the app's records.
+Each arrives with an `ack_token`. Act, then acknowledge within 30 days, even when the answer
+is `not_applicable`. The ack token is the only credential this needs:
 
-Hooks retry eight times over about a day on any non-2xx except 4xx, which stops
-immediately, so handlers must be idempotent on `deliveryId`. `event.sequence` counts up per
+```ts
+await tina.api.acknowledge(deliveryId, event.ack_token!, { outcome: "done" }); // or not_applicable, or refused with a note
+```
+
+One nobody answers is escalated to platform staff with the app named. An app that keeps
+records about people needs a `hooks` block for this reason alone.
+
+A hook gets eight attempts over about 21 hours on any non-2xx. A 4xx other than 408 or
+429 stops at once, and a redirect is not followed and counts as a failure. Handlers must be
+idempotent on `deliveryId`. `event.sequence` counts up per
 app, and a gap means a delivery was missed and the app should reconcile.
 
 Authorization is a backend decision against a verified token:
 
 ```ts
-const { roles } = await tina.verifyIdentity(bearerToken);
+const claims = await tina.verifyIdentity(bearerToken);
+const roles = Array.isArray(claims.roles) ? (claims.roles as string[]) : [];
 if (!roles.includes("hr-admin")) return reply.code(403).send();
 ```
+
+`roles` holds the manifest's own role keys. The `IdentityClaims` type does not declare it,
+so read it as above rather than destructuring.
 
 `useRoles()` and `<RequireRole>` in the page are for layout only. A page cannot authorize
 itself, and treating those hooks as a permission check is the classic mistake.
@@ -227,8 +259,8 @@ partitions by tenant or offers admin actions. Without the grant the claim is abs
 ## Before saying it is done
 
 - `npx tina-miniapp validate` passes with no warnings that matter.
-- The app works in the sandbox with each scope declined in turn, and every obligation hook
-  gets acknowledged.
+- The app works in the sandbox with each scope declined in turn. If it has `hooks`, the
+  challenge answers and every obligation hook gets acknowledged.
 - `npx tina-miniapp doctor` passes against the running app.
 - Opening `embed_url` directly shows the "has to run inside the TINA workspace" state.
   That is correct, not a bug: there is no session until the workspace frames the app.

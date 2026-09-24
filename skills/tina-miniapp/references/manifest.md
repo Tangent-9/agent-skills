@@ -13,7 +13,8 @@ and this file as the map.
 | `sdk` | the SDK range the app is built against, e.g. `^0.5.0`. Platform dialect: `^0.5.0` accepts any 0.x at or above 0.5, unlike npm |
 | `plans` | at least one, at most 8 |
 
-`embed_url` is optional. An app without one is agent-only and opens no screen.
+`embed_url` is optional. An app without one is agent-only, opens no screen, and must bundle
+at least one agent.
 
 ## Capabilities (`scopes`)
 
@@ -27,18 +28,19 @@ re-consent before that version reaches them, so ask for what the code uses today
 | `tenant.roles` | the person's built-in tenant roles, as `tenant_roles` in the identity assertion. Sensitive |
 | `ui.embed` | the app may draw a screen in the workspace |
 | `ui.chat_card` | the app may post cards into a chat |
-| `payments.checkout` | the app may start a checkout |
 | `tasks.create` | the app may create tasks |
 | `workflows.create` | the app may create workflows |
 | `storage` | per-app key-value storage, with a quota |
-| `rewards.accrue` | the app may award points |
-| `rewards.balance` | the app may read a balance |
-| `events` | the app hears workspace events, such as `card.actioned` |
+| `events` | the page may send its own analytics events with `tina.emit()`. Listening with `useAppEvent` needs no scope |
 | `tools.invoke` | the app's interface may call its declared tools. Required whenever `tools` is non-empty |
+
+The schema also accepts `payments.checkout`, `rewards.accrue` and `rewards.balance`, but no
+SDK method or endpoint uses them yet. Requesting one adds a line at consent and buys nothing.
 
 ## Collections
 
-Each has a `key` unique within its own list, and validation rejects duplicates.
+Each entry has a `key` unique within its own list (`chat_cards` use `type` instead), and
+validation rejects duplicates.
 
 - **`agents`** (max 16): `key`, `name`, `persona`, `instructions`, `skills`, `rules`, `mcp`.
   Anything in `mcp` must name a server this manifest declares.
@@ -47,20 +49,24 @@ Each has a `key` unique within its own list, and validation rejects duplicates.
   page. Submit refuses a server on a port every HTTP client refuses, 4190 among them.
   `tina_identity` is for a server the app runs itself: nobody connects anything; TINA
   signs the acting person into every call as `x-mcp-<server key>-authorization: Bearer
-  <assertion>`, the same Ed25519 assertion the page sends the backend, and the server
+  <assertion>`. The header arrives with the key lowercased and every run of other characters
+  turned into `_`, so server `health-api` reads `x-mcp-health_api-authorization`. It carries
+  the same Ed25519 assertion the page sends the backend, and the server
   verifies it with `tina.verifyIdentity()`. It requires the `user.context` and
   `tenant.identity` scopes, and consent to the live version is re-checked on every call.
-- **`tools`** (max 64): operations the app's interface may invoke, each passing through to
-  one declared `mcp` server.
+- **`tools`** (max 64): operations the app's interface may invoke, each naming a `tool` on
+  one declared `mcp` server. `consequential: true` makes the workspace ask the person to
+  confirm before the call runs. Set it on anything that spends, sends or deletes.
 - **`workflow_actions`** (max 16): preset steps for the workflow builder, each running one
   of this app's own agents.
 - **`chat_cards`** (max 32): card types the app may post.
 - **`roles`** (max 16): what a person is inside this app. Publishing provisions each as a
-  tenant role that a tenant admin assigns. They grant nothing in TINA.
+  tenant role that a tenant admin assigns. They grant nothing in TINA. At most one is
+  `default`.
 - **`notifications`** (max 16): the reasons the app may interrupt somebody, each one they
   can switch off.
-- **`plans`** (1 to 8): `key`, `name`, `price_cents`, `currency`, and an interval of
-  `month`, `year` or `one_time`.
+- **`plans`** (1 to 8): `key`, `price_cents`, optional `name`, `currency` (default `sgd`),
+  and `interval`: `month` (the default), `year` or `one_time`.
 
 ## `ui`
 
@@ -80,6 +86,7 @@ Each has a `key` unique within its own list, and validation rejects duplicates.
 ```
 
 `modules` is the menu the workspace draws above the frame, and the page cannot change it.
+A module's `roles` limits who sees it, and each must name a declared role.
 `chrome` defaults to `shell`, where the workspace draws the header. `sdk` lets the SDK draw
 it inside the frame. Upload refuses `sdk` unless a platform admin has marked the app
 trusted for it, and every launch checks again, so an app whose trust is withdrawn gets
@@ -100,7 +107,9 @@ challenge before any of the app's own logic, and run `npx tina-miniapp doctor` t
 while it is still cheap to fix.
 
 The three obligation events (`user.deletion_requested`, `tenant.offboarding`,
-`data.export_requested`) are delivered whether or not they are listed here.
+`data.export_requested`) are delivered to every app with a `hooks.url`, whether or not
+`events` lists them. An app with no `hooks` block gets none, and the sandbox refuses to
+send them.
 
 ## Cross-field rules validation enforces
 
@@ -109,3 +118,10 @@ The three obligation events (`user.deletion_requested`, `tenant.offboarding`,
 - `tools` being non-empty requires the `tools.invoke` scope.
 - A workflow action's `agent` must name a declared agent.
 - No duplicate keys in any collection.
+- `embed_url` and the `ui.embed` scope come together: each requires the other.
+- `ui.modules` require an `embed_url`.
+- `chat_cards` require the `ui.chat_card` scope.
+- A module's `roles` must name declared roles.
+- At most one default role and one default module.
+- An `mcp_servers` entry with `tina_identity` auth requires `user.context` and `tenant.identity`.
+- No `embed_url` means at least one agent.
