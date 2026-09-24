@@ -6,7 +6,7 @@ Agent skills from Tangent 9. Install them with `npx skills add`, or as Claude Co
 
 | Skill | What it does |
 | ----- | ------------ |
-| [tina-miniapp](plugins/tina-miniapp/skills/tina-miniapp/SKILL.md) | Build a TINA mini app end to end: scaffold, manifest, SDK, backend, sandbox, submit |
+| [tina-miniapp](skills/tina-miniapp/SKILL.md) | Build a TINA mini app end to end: scaffold, manifest, SDK, backend, sandbox, submit |
 
 ## Install with the skills CLI
 
@@ -52,32 +52,37 @@ new versions of anything installed from it.
 Skills are plain directories, so a symlink works:
 
 ```bash
-ln -s "$PWD/plugins/tina-miniapp/skills/tina-miniapp" ~/.claude/skills/tina-miniapp
+ln -s "$PWD/skills/tina-miniapp" ~/.claude/skills/tina-miniapp
 ```
 
 ## Layout
 
 ```
+skills/<skill>/SKILL.md             the skill itself, with its references/ beside it
 .claude-plugin/marketplace.json     the marketplace, listing every plugin below
 plugins/<plugin>/
   .claude-plugin/plugin.json        the plugin's own manifest
-  skills/<skill>/SKILL.md           the skill itself, with its references/ beside it
-skills/<skill>                      symlink to the skill above
+  skills/<skill>                    symlink to the skill above
 ```
 
-One plugin per directory under `plugins/`, listed in `marketplace.json` by relative path. A
-plugin can carry more than one skill; each gets its own directory under its `skills/`.
+Skills live in the top-level `skills/`, one directory each. That is where the skills CLI and
+anyone reading the repo expect them.
 
-The skill files live inside the plugin because a plugin manifest cannot reference a path
-outside its own directory. The top-level `skills/` holds symlinks so the skills CLI and
-anyone reading the repo find skills where they expect them. Claude Code reads the real files
-and never follows the symlinks.
+A plugin manifest cannot reference a path outside its own directory, so each plugin links the
+skills it carries into its own `skills/`. `claude plugin install` dereferences those links and
+copies real files into its cache, so an installed plugin holds no symlinks.
+
+One plugin per directory under `plugins/`, listed in `marketplace.json` by relative path. A
+plugin can carry more than one skill.
+
+`claude plugin validate` reports the link as a warning: it reads components without following
+symlinks. Installing and loading both follow them, so the warning is expected here.
 
 ## Adding a skill
 
-1. Create `plugins/<plugin>/skills/<skill>/SKILL.md` with `name` and `description` frontmatter.
-   The description is what an agent matches against, so write it as the trigger.
-2. Symlink it: `ln -s ../plugins/<plugin>/skills/<skill> skills/<skill>`.
+1. Create `skills/<skill>/SKILL.md` with `name` and `description` frontmatter. The description
+   is what an agent matches against, so write it as the trigger.
+2. Link it into the plugin: `ln -s ../../../skills/<skill> plugins/<plugin>/skills/<skill>`.
 3. Add or update `plugins/<plugin>/.claude-plugin/plugin.json`.
 4. Add the plugin to the `plugins` array in `.claude-plugin/marketplace.json`.
 5. Bump the plugin `version` so installed copies pick the change up.

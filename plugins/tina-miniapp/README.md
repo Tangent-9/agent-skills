@@ -9,8 +9,8 @@ and `validate` / `doctor` / `submit`.
 Claude loads it on its own when a request mentions a TINA mini app, the manifest, the SDK or
 the sandbox. You can also name it directly.
 
-- [SKILL.md](skills/tina-miniapp/SKILL.md)
-- [Manifest reference](skills/tina-miniapp/references/manifest.md)
+- [SKILL.md](../../skills/tina-miniapp/SKILL.md)
+- [Manifest reference](../../skills/tina-miniapp/references/manifest.md)
 
 ## Install
 
