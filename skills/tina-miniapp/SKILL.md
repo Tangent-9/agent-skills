@@ -148,9 +148,34 @@ add to the menu, rename an item, or reorder the platform's entries. If a design 
 that, the answer is a manifest change, not a runtime one.
 
 The kit (`Button`, `Card`, `Dialog`, `Tabs`, `ListRow`, `Fields`, `FilterBar`, `ListState`,
-`Masked`, `ToastProvider`) is styled by `theme.css` and matches the workspace, so an app
-built on it does not look bolted on. On Tailwind v4, import
-`@tangent-9/miniapps-sdk/tailwind.css` for the same tokens as utilities.
+`Masked`, `ToastProvider`) is styled by `theme.css`, which carries the workspace's own
+tokens, type and component shapes. Build from it and the app reads as part of the page it
+is framed in. On Tailwind v4, import `@tangent-9/miniapps-sdk/tailwind.css` for the same
+tokens as utilities.
+
+None of it is required. A partner with their own design system should use it: redefining
+`--tina-*` on `:root` carries the kit along, and an app styled entirely its own way passes
+review and runs fine. Ask which the partner wants rather than assuming the default.
+
+One thing the stylesheet cannot do for you. It names the two faces the workspace uses and
+falls back to the system stack, but it loads neither, because a stylesheet that fetches
+fonts leaves an app no way out. The templates carry the link in `index.html`, so a
+scaffolded project is already right; a page you built another way needs it:
+
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" />
+```
+
+Without it the app renders in the system face inside chrome that does not, and the seam
+shows. Self-hosting the files is the same change on one line; both faces are OFL.
+
+Read `node_modules/@tangent-9/miniapps-sdk/DESIGN.md` before designing a screen. It says
+what each token is for, which component does which job, and which few things the workspace
+genuinely owns: the header and its menu, the permission and exit sheets, and confirmation
+of a consequential action. Those hold whatever the app looks like. The rest of that file is
+a default, not a rule.
 
 ## Writing the backend
 
@@ -208,3 +233,6 @@ partitions by tenant or offers admin actions. Without the grant the claim is abs
 - Opening `embed_url` directly shows the "has to run inside the TINA workspace" state.
   That is correct, not a bug: there is no session until the workspace frames the app.
 - Every scope in the manifest is one the code actually uses.
+- If the app was meant to match the workspace, its type in the sandbox is the same face as
+  the header above it. A different face means the font link is missing. An app with its own
+  design is supposed to look different, so this one does not apply.
