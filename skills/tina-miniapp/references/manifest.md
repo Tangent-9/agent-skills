@@ -19,6 +19,16 @@ A screen comes from one of two fields, never both:
   output, relative to the manifest and inside the project. `tina-miniapp deploy` publishes it
   and writes `embed_url` into the version it uploads, so the manifest itself has none.
   Uploading a `hosting` manifest any other way is refused.
+
+  `hosting.backend` adds a server TINA builds and runs behind `/api/*` on the same host:
+
+  | Field | Default | Meaning |
+  | --- | --- | --- |
+  | `dir` | `.` | the Docker build context |
+  | `dockerfile` | `Dockerfile` | relative to `dir` |
+  | `port` | `8080` | what the server listens on, 1024 to 65535 |
+  | `runtime` | `lambda` | `lambda`, or `container` for a server that keeps state itself |
+  | `volume.path` | none | `container` only: an absolute path for a disk that survives restarts and redeploys, not a system directory |
 - **`embed_url`**: the partner hosts the page, over https (loopback http while developing).
 
 An app with neither is agent-only, opens no screen, and must bundle at least one agent.
@@ -58,8 +68,9 @@ validation rejects duplicates.
   signs the acting person into every call as `x-mcp-<server key>-authorization: Bearer
   <assertion>`. The header arrives with the key lowercased and every run of other characters
   turned into `_`, so server `health-api` reads `x-mcp-health_api-authorization`. It carries
-  the same Ed25519 assertion the page sends the backend, and the server
-  verifies it with `tina.verifyIdentity()`. It requires the `user.context` and
+  the same Ed25519 assertion the page sends the backend. Serve it with
+  `createMcpHandler`, or verify it with `tina.verifyMcpIdentity(headers, key)`. On a
+  hosted backend its `url` is a path, such as `/api/mcp`. It requires the `user.context` and
   `tenant.identity` scopes, and consent to the live version is re-checked on every call.
 - **`tools`** (max 64): operations the app's interface may invoke, each naming a `tool` on
   one declared `mcp` server. `consequential: true` makes the workspace ask the person to
@@ -103,10 +114,12 @@ trusted for it, and every launch checks again, so an app whose trust is withdraw
 
 ```json
 "hooks": {
-  "url": "https://api.yourapp.example/hooks/tina",
+  "url": "/api/hooks/tina",
   "events": ["subscription.started", "subscription.ended", "consent.changed"]
 }
 ```
+
+`url` is a path under `/api/` for a hosted backend, and an https URL otherwise.
 
 The endpoint must answer a registration challenge by echoing the nonce, both at submit and
 again at publish. A version whose endpoint does not answer is not submitted. Handle the
@@ -129,6 +142,8 @@ send them.
 - A screen (`embed_url` or `hosting`) and the `ui.embed` scope come together: each requires the other.
 - `ui.modules` require a screen.
 - `hosting.frontend.dir` stays inside the project (no `..`).
+- `hooks.url` or an `mcp_servers` `url` that is a path needs `hosting.backend`, and must be under `/api/`.
+- `hosting.backend.volume` needs `runtime: "container"`.
 - `chat_cards` require the `ui.chat_card` scope.
 - A module's `roles` must name declared roles.
 - At most one default role and one default module.
