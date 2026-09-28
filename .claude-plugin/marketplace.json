@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "tina-miniapp",
-      "description": "Build a TINA mini app end to end: scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and backend, run it in the local sandbox, then validate and submit.",
+      "description": "Build a TINA mini app end to end: scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and backend, run it in the local sandbox, deploy it to TINA, then validate and submit.",
       "author": {
         "name": "Tangent 9"
       },

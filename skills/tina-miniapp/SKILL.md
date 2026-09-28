@@ -1,12 +1,13 @@
 ---
 name: tina-miniapp
-description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend, run it locally in the sandbox, then check and submit it. Use this whenever someone wants to build, extend, debug, test or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-sandbox, app scopes and plans, lifecycle hooks, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA" or names a template instead of saying "mini app".
+description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend, run it locally in the sandbox, deploy it to TINA's own hosting, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login or deploy, tina-sandbox, a hosting block, app scopes and plans, lifecycle hooks, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA" or names a template instead of saying "mini app".
 ---
 
 # Build a TINA mini app
 
 A mini app is three things: a page the TINA workspace frames in an iframe, a manifest
-saying what the app may do, and usually a backend of your own. The division of labour is
+saying what the app may do, and usually a backend of your own. TINA can host the page
+itself (`tina-miniapp deploy`); the backend is still yours to run. The division of labour is
 the thing to hold onto. TINA owns the subscription, the session and the consent. Your
 service owns the records the app is actually about. That is true of the apps TINA
 publishes itself, so a design that wants TINA to store the app's data is fighting the
@@ -23,8 +24,8 @@ npx @tangent-9/create-tina-miniapp <dir> --template <name>
 
 | Template | Choose it when |
 | ----------------- | ------------------------------------------------------ |
-| `react-vite` (default) | the app has a screen and an agent |
-| `fullstack` | the app also keeps records, so it needs its own backend |
+| `react-vite` (default) | the app has a screen and an agent. TINA hosts the page (`hosting` in the manifest) |
+| `fullstack` | the app also keeps records, so it needs its own backend. You host the page and the backend (`embed_url`) |
 | `agent-companion` | the app is an agent and nothing else |
 
 `agent-companion` is a manifest and a README, nothing to install. That matters for one
@@ -42,15 +43,22 @@ anything restated here. Read it before writing page code.
 
 ```bash
 npx tina-miniapp dev --sandbox  # the page, its backend and a local stand-in for TINA
-npx tina-miniapp dev            # the page and its backend, for a real workspace to frame
-npx tina-miniapp doctor         # framing headers and the hook endpoint, against a running app
 npx tina-miniapp validate       # the manifest against the platform's own schema
-npx tina-miniapp pack           # a .tinapkg of the manifest and listing assets
-TINA_PARTNER_KEY=tinapk_… npx tina-miniapp submit
+npx tina-miniapp login          # once per machine; the person approves it in the portal
+npx tina-miniapp deploy         # hosted apps: build, upload, and publish on TINA
+npx tina-miniapp doctor         # framing headers and the hook endpoint, against a running app
+npx tina-miniapp submit         # send the version for review
 ```
 
-`submit` finds the app by the manifest's `name`, so a listing with exactly that name must
-already exist in the partner portal. Create it there first.
+`submit`, `deploy` and `doctor` find the app by the manifest's `name`, so a listing with
+exactly that name must already exist in the partner portal. Create it there first, or record
+its id once with `npx tina-miniapp link --app <id>`.
+
+**You cannot sign in for the person.** `login` prints a code and opens the partner portal,
+where they check the code, confirm their password and approve. Ask them to run it, then
+carry on. `npx tina-miniapp whoami` tells you whether they have. CI uses an API key from the
+portal's Developers page as `TINA_PARTNER_KEY` instead; never ask the person to paste one
+into the conversation.
 
 Run `validate` after every manifest edit rather than at the end. It carries the platform's
 schema, so what it accepts is what upload accepts, and its messages name the field.
@@ -59,12 +67,48 @@ The listing's logo is `assets/icon.png` (or `.jpg`, `.jpeg`, `.webp`), up to 512
 square: nothing checks, but the catalogue draws it in a square. `submit` uploads it. SVG is refused, because the platform serves logos to anyone and an
 SVG can carry script. Without one, the catalogue shows the app's initial.
 
-`doctor` needs the app running. It checks framing against the workspace origin
+`doctor` needs the app running. For a hosted app it skips the framing check, because TINA
+sets those headers. Otherwise it checks framing against the workspace origin
 (`--workspace` or `TINA_WORKSPACE_URL`, default `http://localhost:3911`). It fails on
 `X-Frame-Options: DENY` or `SAMEORIGIN` and on a `frame-ancestors` that leaves the workspace
 out, and warns when there is no `frame-ancestors` at all. Those surface as a blank frame in
 front of a customer. With `TINA_PARTNER_KEY` set it also sends the registration challenge
-to the hook endpoint. Without the key it only checks that an unsigned hook is refused.
+to the hook endpoint, as it does when the person is signed in. Without either it only
+checks that an unsigned hook is refused.
+
+## Put it on TINA
+
+For an app with a screen and no backend of its own, TINA hosts the page. The manifest
+declares where the build output is, and has no `embed_url`:
+
+```json
+{ "hosting": { "frontend": { "dir": "dist" } } }
+```
+
+Keep the `ui.embed` scope. `hosting` and `embed_url` together are refused, because TINA
+writes the URL.
+
+`npx tina-miniapp deploy` runs the project's `build` script (skip it with `--skip-build`),
+uploads the files TINA does not already have, and waits until the deploy is live. It prints
+the app's address, which moves with every deploy, and this deploy's own, which never
+changes. Each deploy also uploads a **draft version** pointing at that deploy's own address.
+That draft is what the person runs from the listing's **Sandbox** tab in the partner portal,
+and what `submit` sends for a hosted app. Deploying the same `version` again replaces the
+draft; once it has been submitted, bump `version` first or the deploy fails with "Bump the
+version".
+
+`npx tina-miniapp deployments` lists recent deploys, with `*` beside the current one, and
+`npx tina-miniapp rollback <id>` moves the app's address back without rebuilding.
+
+Limits: 2,000 files, 8 MB each, 100 MB in all, and an `index.html` at the root of the build
+output. A path with no file extension serves `index.html`, so client-side routing works.
+
+A hosted page opened in a tab of its own shows a notice rather than the app: it runs inside
+TINA only. Do not treat that as a bug.
+
+TINA hosts pages only. An app with a backend runs that backend on its own host with
+`hooks.url` pointing at it, and a page that calls its backend on the same origin (the
+`fullstack` template) keeps `embed_url` on the partner's own host for now.
 
 ## Run it before TINA knows about it
 
@@ -74,6 +118,10 @@ workspace does and answers the bridge from fixtures, so the app runs with no acc
 partner key and nothing published. It plays TINA to the backend too. It publishes a key
 set and signs identity assertions and hooks with a throwaway key, so `verifyHook` and
 `verifyIdentity` run unchanged.
+
+A hosted manifest has no `embed_url` until it is deployed, so the sandbox frames the dev
+server instead: `http://localhost:4180/`, the templates' port, or whatever `npx tina-sandbox
+--url <page>` names. `dev --sandbox` passes the page's address for you.
 
 Use it for what is hard to reach on a real workspace:
 
@@ -126,7 +174,8 @@ Two consequences, both deliberate, and both things a coding agent will otherwise
   CORS configuration for it. The app's own backend is a different matter: the page does
   call that directly, through `useBackend()`.
 
-What the host serving the page must do is permit framing:
+A page TINA hosts is already framable by the workspace; skip the rest of this section.
+A page on the partner's own host must permit framing:
 
 ```
 Content-Security-Policy: frame-ancestors https://app.tina.example https://<workspace origin>;
@@ -262,8 +311,12 @@ partitions by tenant or offers admin actions. Without the grant the claim is abs
 - The app works in the sandbox with each scope declined in turn. If it has `hooks`, the
   challenge answers and every obligation hook gets acknowledged.
 - `npx tina-miniapp doctor` passes against the running app.
-- Opening `embed_url` directly shows the "has to run inside the TINA workspace" state.
-  That is correct, not a bug: there is no session until the workspace frames the app.
+- Opening the page directly shows the "has to run inside the TINA workspace" state, or, for
+  a hosted app, TINA's "open this app in TINA" notice. Both are correct: there is no session
+  until the workspace frames the app.
+- For a hosted app: `npx tina-miniapp deploy` finishes and the person has run the draft from
+  the partner portal's Sandbox tab. Say so if they have not signed in yet, rather than
+  claiming it is deployed.
 - Every scope in the manifest is one the code actually uses.
 - If the app was meant to match the workspace, its type in the sandbox is the same face as
   the header above it. A different face means the font link is missing. An app with its own

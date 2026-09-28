@@ -6,7 +6,7 @@ Agent skills from Tangent 9. Install them with `npx skills add`, or as Claude Co
 
 | Skill | What it does |
 | ----- | ------------ |
-| [tina-miniapp](skills/tina-miniapp/SKILL.md) | Build a TINA mini app end to end: scaffold, manifest, SDK, backend, sandbox, submit |
+| [tina-miniapp](skills/tina-miniapp/SKILL.md) | Build a TINA mini app end to end: scaffold, manifest, SDK, backend, sandbox, deploy, submit |
 
 ## Install with the skills CLI
 
