@@ -4,7 +4,7 @@ A Claude Code plugin carrying one skill: building a TINA mini app.
 
 The skill covers the whole path, from `npx @tangent-9/create-tina-miniapp` through the
 `tina-miniapp.json` manifest, the browser SDK and the app's own backend, the local sandbox,
-and `validate` / `doctor` / `submit`.
+signing in and deploying to TINA's hosting, and `validate` / `doctor` / `submit`.
 
 Claude loads it on its own when a request mentions a TINA mini app, the manifest, the SDK or
 the sandbox. You can also name it directly.

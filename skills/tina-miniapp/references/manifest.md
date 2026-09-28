@@ -13,8 +13,15 @@ and this file as the map.
 | `sdk` | the SDK range the app is built against, e.g. `^0.5.0`. Platform dialect: `^0.5.0` accepts any 0.x at or above 0.5, unlike npm |
 | `plans` | at least one, at most 8 |
 
-`embed_url` is optional. An app without one is agent-only, opens no screen, and must bundle
-at least one agent.
+A screen comes from one of two fields, never both:
+
+- **`hosting`**: TINA hosts the page. `{ "frontend": { "dir": "dist" } }` names the build
+  output, relative to the manifest and inside the project. `tina-miniapp deploy` publishes it
+  and writes `embed_url` into the version it uploads, so the manifest itself has none.
+  Uploading a `hosting` manifest any other way is refused.
+- **`embed_url`**: the partner hosts the page, over https (loopback http while developing).
+
+An app with neither is agent-only, opens no screen, and must bundle at least one agent.
 
 ## Capabilities (`scopes`)
 
@@ -118,10 +125,12 @@ send them.
 - `tools` being non-empty requires the `tools.invoke` scope.
 - A workflow action's `agent` must name a declared agent.
 - No duplicate keys in any collection.
-- `embed_url` and the `ui.embed` scope come together: each requires the other.
-- `ui.modules` require an `embed_url`.
+- `hosting` and `embed_url` are never both set.
+- A screen (`embed_url` or `hosting`) and the `ui.embed` scope come together: each requires the other.
+- `ui.modules` require a screen.
+- `hosting.frontend.dir` stays inside the project (no `..`).
 - `chat_cards` require the `ui.chat_card` scope.
 - A module's `roles` must name declared roles.
 - At most one default role and one default module.
 - An `mcp_servers` entry with `tina_identity` auth requires `user.context` and `tenant.identity`.
-- No `embed_url` means at least one agent.
+- No screen means at least one agent.
