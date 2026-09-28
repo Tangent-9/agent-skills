@@ -397,9 +397,15 @@ const { status, body } = await mcp({ headers: req.headers, body: rawBody });
 ```
 
 It is plain JSON-RPC over POST with no session, so it runs on Lambda. The identity is not
-in `Authorization`: it is in `x-mcp-<key>-authorization`, the key lower-cased with other
-characters folded to `_`. On another MCP library, `await tina.verifyMcpIdentity(headers,
-"notes")` returns the claims. `tina_identity` requires `user.context` and `tenant.identity`.
+in `Authorization`: it is in `x-mcp-<key>-authorization`, the key lower-cased. A key with
+other characters arrives twice, folded to `_` (`x-mcp-sales_desk-authorization`) and to `-`
+(`x-mcp-sales-desk-authorization`). CloudFront, nginx and Caddy drop a header name with an
+underscore, so behind TINA's hosting, or the partner's own proxy, only the dashed one
+arrives. `createMcpHandler` reads either. On another MCP library, `await
+tina.verifyMcpIdentity(headers, "sales-desk")` does the same and returns the claims; a
+server that reads the header itself must read the dashed name. A key of letters and
+digits has one name and avoids the question, and `validate` warns about any other.
+`tina_identity` requires `user.context` and `tenant.identity`.
 
 **Answer the registration challenge first.** At submit and again at publish TINA sends a
 challenge to `hooks.url`. A plain 200 fails. Echo the nonce before any of the app's logic:

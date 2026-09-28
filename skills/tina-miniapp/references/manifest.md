@@ -70,8 +70,11 @@ validation rejects duplicates.
   page. Submit refuses a server on a port every HTTP client refuses, 4190 among them.
   `tina_identity` is for a server the app runs itself: nobody connects anything; TINA
   signs the acting person into every call as `x-mcp-<server key>-authorization: Bearer
-  <assertion>`. The header arrives with the key lowercased and every run of other characters
-  turned into `_`, so server `health-api` reads `x-mcp-health_api-authorization`. It carries
+  <assertion>`, with the key lowercased. A key with other characters arrives under two
+  names, each run folded to `_` and to `-`: server `health-api` gets
+  `x-mcp-health_api-authorization` and `x-mcp-health-api-authorization`. Proxies and CDNs,
+  TINA's hosting included, drop the underscore name, so read the dashed one, or use a key of
+  letters and digits only (`validate` warns otherwise). It carries
   the same Ed25519 assertion the page sends the backend. Serve it with
   `createMcpHandler`, or verify it with `tina.verifyMcpIdentity(headers, key)`. On a
   hosted backend, or on a self-hosted page that serves `/api/*` itself, its `url` is a path,
