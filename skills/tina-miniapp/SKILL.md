@@ -1,14 +1,14 @@
 ---
 name: tina-miniapp
-description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend, run it locally in the sandbox, deploy it to TINA's own hosting, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login or deploy, tina-sandbox, a hosting block, app scopes and plans, lifecycle hooks, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA" or names a template instead of saying "mini app".
+description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda, or a container with a disk), then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, deploy or env, tina-sandbox, a hosting block, hosting.backend, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server" or names a template instead of saying "mini app".
 ---
 
 # Build a TINA mini app
 
 A mini app is three things: a page the TINA workspace frames in an iframe, a manifest
-saying what the app may do, and usually a backend of your own. TINA can host the page
-itself (`tina-miniapp deploy`); the backend is still yours to run. The division of labour is
-the thing to hold onto. TINA owns the subscription, the session and the consent. Your
+saying what the app may do, and usually a backend of your own. TINA can host both
+(`tina-miniapp deploy`): the page as static files, the backend built from its Dockerfile.
+The division of labour is the thing to hold onto. TINA owns the subscription, the session and the consent. Your
 service owns the records the app is actually about. That is true of the apps TINA
 publishes itself, so a design that wants TINA to store the app's data is fighting the
 platform.
@@ -22,10 +22,14 @@ one is faster than assembling files and finding out at submit which fields were 
 npx @tangent-9/create-tina-miniapp <dir> --template <name>
 ```
 
+Run by a person at a terminal with no `--template`, it asks whether the app has a screen
+and a server of its own, and recommends a template. From an agent, always pass
+`--template` (or `--yes`), because nobody is there to answer.
+
 | Template | Choose it when |
 | ----------------- | ------------------------------------------------------ |
-| `react-vite` (default) | the app has a screen and an agent. TINA hosts the page (`hosting` in the manifest) |
-| `fullstack` | the app also keeps records, so it needs its own backend. You host the page and the backend (`embed_url`) |
+| `react-vite` (default) | the app has a screen and an agent. TINA hosts the page |
+| `fullstack` | the app also keeps records or gives its agent tools, so it needs a server. TINA hosts both; the agent's tools are an MCP server at `/api/mcp` |
 | `agent-companion` | the app is an agent and nothing else |
 
 `agent-companion` is a manifest and a README, nothing to install. That matters for one
@@ -46,6 +50,7 @@ npx tina-miniapp dev --sandbox  # the page, its backend and a local stand-in for
 npx tina-miniapp validate       # the manifest against the platform's own schema
 npx tina-miniapp login          # once per machine; the person approves it in the portal
 npx tina-miniapp deploy         # hosted apps: build, upload, and publish on TINA
+npx tina-miniapp env set K v    # a hosted backend's settings and secrets
 npx tina-miniapp doctor         # framing headers and the hook endpoint, against a running app
 npx tina-miniapp submit         # send the version for review
 ```
@@ -78,27 +83,74 @@ checks that an unsigned hook is refused.
 
 ## Put it on TINA
 
-For an app with a screen and no backend of its own, TINA hosts the page. The manifest
-declares where the build output is, and has no `embed_url`:
+TINA hosts the page, and the backend if there is one. The manifest says where each is,
+and has no `embed_url`:
 
 ```json
-{ "hosting": { "frontend": { "dir": "dist" } } }
+{
+  "hosting": {
+    "frontend": { "dir": "dist" },
+    "backend": { "dir": ".", "dockerfile": "Dockerfile", "port": 4181 }
+  },
+  "hooks": { "url": "/api/hooks/tina", "events": [] },
+  "mcp_servers": [{ "key": "notes", "url": "/api/mcp", "auth": "tina_identity" }]
+}
 ```
 
 Keep the `ui.embed` scope. `hosting` and `embed_url` together are refused, because TINA
 writes the URL.
 
+**The backend lives under `/api/` on the page's own host.** TINA routes `/api/*` there, so
+the page calls `/api/...` on its own origin: no backend URL to configure and no CORS. Serve
+every backend route, hooks and MCP included, under `/api/`; nothing else reaches it. Written
+that way, `hooks.url` and an own `mcp_servers[].url` may be paths, and the deploy writes the
+full address into the version. A path is refused without `hosting.backend`. Locally, proxy
+`/api` from the dev server to the backend (the `fullstack` template's `vite.config.ts` does),
+so the page works the same way.
+
+**Pick the runtime by what the server keeps.**
+
+| `runtime` | Choose it when |
+| --- | --- |
+| `lambda` (default) | the server keeps its state in a database or another service. It starts per request, may run as many copies as there are requests, and keeps nothing on disk or in memory |
+| `container` | the server keeps state itself: a SQLite file, files on disk, an in-memory cache it cannot lose, a websocket. One container runs all the time on a machine of the app's own |
+
+A `container` may ask for a disk: `"volume": { "path": "/data" }` is mounted there and
+survives restarts and every redeploy. Point the app's database file at it. A container
+must listen on `0.0.0.0` (TINA sets `HOST` to it), not `127.0.0.1`, or nothing outside
+the container reaches it. Its first deploy takes a few minutes longer while the machine
+starts. A `lambda` backend with a SQLite file loses it, and each copy has its own.
+
+`deploy` tars the backend's `dir` (leaving out `node_modules`, `.git`, `.env*` and whatever
+`.dockerignore` names; 8 MB at most) and TINA builds the Dockerfile for arm64. A build that
+fails, or a server that does not answer on `port`, fails the deploy with the end of its
+log. Read that output before changing anything.
+
+**Settings and secrets go in `tina-miniapp env`, never in the image or the repo.**
+
+```bash
+npx tina-miniapp env set DATABASE_URL postgres://…
+cat key.pem | base64 | npx tina-miniapp env set PRIVATE_KEY_B64   # values are one line
+npx tina-miniapp env                                              # names only
+```
+
+Values are sealed and never shown again, and reach the backend on the next deploy. TINA
+sets `TINA_APP_ID`, `TINA_ISSUER`, `TINA_API_URL`, `PORT` and `HOST` itself, which is
+everything `createTina()` needs; `TINA_*`, `AWS_*`, `PORT` and `HOST` cannot be set.
+
 `npx tina-miniapp deploy` runs the project's `build` script (skip it with `--skip-build`),
-uploads the files TINA does not already have, and waits until the deploy is live. It prints
-the app's address, which moves with every deploy, and this deploy's own, which never
-changes. Each deploy also uploads a **draft version** pointing at that deploy's own address.
-That draft is what the person runs from the listing's **Sandbox** tab in the partner portal,
-and what `submit` sends for a hosted app. Deploying the same `version` again replaces the
+uploads the files TINA does not already have, builds the backend, and waits until the deploy
+is live. It prints the app's address, which moves with every deploy, and this deploy's own.
+Each deploy also uploads a **draft version** pointing at that deploy's own address. That
+draft is what the person runs from the listing's **Sandbox** tab in the partner portal, and
+what `submit` sends for a hosted app. Deploying the same `version` again replaces the
 draft; once it has been submitted, bump `version` first or the deploy fails with "Bump the
 version".
 
 `npx tina-miniapp deployments` lists recent deploys, with `*` beside the current one, and
-`npx tina-miniapp rollback <id>` moves the app's address back without rebuilding.
+`npx tina-miniapp rollback <id>` moves the app's address back without rebuilding. A
+`lambda` backend moves back with the page. A `container` runs the older image again on the
+same machine and disk.
 
 Limits: 2,000 files, 8 MB each, 100 MB in all, and an `index.html` at the root of the build
 output. A path with no file extension serves `index.html`, so client-side routing works.
@@ -106,9 +158,25 @@ output. A path with no file extension serves `index.html`, so client-side routin
 A hosted page opened in a tab of its own shows a notice rather than the app: it runs inside
 TINA only. Do not treat that as a bug.
 
-TINA hosts pages only. An app with a backend runs that backend on its own host with
-`hooks.url` pointing at it, and a page that calls its backend on the same origin (the
-`fullstack` template) keeps `embed_url` on the partner's own host for now.
+### Moving an app that runs on its own host
+
+An app already running elsewhere with `embed_url` moves in five edits, and the agent should
+make all of them before the first deploy:
+
+1. Replace `embed_url` with `hosting`: `frontend.dir` is the page's build output, and
+   `backend` names the Dockerfile and the port the server listens on. A server that keeps a
+   SQLite file or other local state is `runtime: "container"` with a `volume` at the
+   directory the file lives in.
+2. Move every backend route the manifest names under `/api/` (hooks, MCP), keeping the old
+   paths too while the old host is still in use.
+3. Write `hooks.url` and the app's own `mcp_servers[].url` as those paths.
+4. Point the page at its own origin for the backend (`window.location.origin`), not a
+   hard-coded host.
+5. Move settings the old host held as environment variables into `tina-miniapp env`.
+   Bump `version`.
+
+A server that serves the page itself as well can keep doing so; on TINA only `/api/*`
+reaches it. Frame headers it sets for its old host no longer matter: TINA sets them.
 
 ## Run it before TINA knows about it
 
@@ -248,6 +316,33 @@ Add `credential: process.env.TINA_APP_CREDENTIAL` (a `tinaak_…` a platform adm
 only when the backend calls TINA back: `tina.api.notify()` under a declared `notifications`
 category, or `tina.api.subscribers()`. Verifying needs no credential.
 
+**Give the app's agent tools with an MCP server of its own.** Declare it with
+`auth: "tina_identity"` and serve it with `createMcpHandler`. TINA signs the person the
+agent acts for into every call, so nobody connects anything and the handler checks it:
+
+```ts
+import { createMcpHandler } from "@tangent-9/miniapps-sdk/server";
+
+const mcp = createMcpHandler({
+  tina,
+  serverKey: "notes",                     // its key in mcp_servers
+  tools: [{
+    name: "read_note",
+    description: "The person's note.",
+    inputSchema: { type: "object", properties: {} },
+    readOnly: true,
+    run: (_args, { claims }) => ({ note: notes.get(claims.sub) ?? "" }),
+  }],
+});
+// POST /api/mcp
+const { status, body } = await mcp({ headers: req.headers, body: rawBody });
+```
+
+It is plain JSON-RPC over POST with no session, so it runs on Lambda. The identity is not
+in `Authorization`: it is in `x-mcp-<key>-authorization`, the key lower-cased with other
+characters folded to `_`. On another MCP library, `await tina.verifyMcpIdentity(headers,
+"notes")` returns the claims. `tina_identity` requires `user.context` and `tenant.identity`.
+
 **Answer the registration challenge first.** At submit and again at publish TINA sends a
 challenge to `hooks.url`. A plain 200 fails. Echo the nonce before any of the app's logic:
 
@@ -317,6 +412,9 @@ partitions by tenant or offers admin actions. Without the grant the claim is abs
 - For a hosted app: `npx tina-miniapp deploy` finishes and the person has run the draft from
   the partner portal's Sandbox tab. Say so if they have not signed in yet, rather than
   claiming it is deployed.
+- For a hosted backend: every route it needs is under `/api/`, it answers there after the
+  deploy (a 401 without an identity is an answer), and a server that keeps files is a
+  `container` with a `volume`, not a `lambda`.
 - Every scope in the manifest is one the code actually uses.
 - If the app was meant to match the workspace, its type in the sandbox is the same face as
   the header above it. A different face means the font link is missing. An app with its own
