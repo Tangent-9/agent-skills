@@ -30,8 +30,12 @@ A screen comes from one of two fields, never both:
   | `runtime` | `lambda` | `lambda`, or `container` for a server that keeps state itself |
   | `volume.path` | none | `container` only: an absolute path for a disk that survives restarts and redeploys, not a system directory |
 - **`embed_url`**: the partner hosts the page, over https (loopback http while developing).
+  Leave it out until the page is live: the CLI reads a manifest with the `ui.embed` scope
+  and neither field as a self-hosted page waiting for its URL. `validate` passes it with a
+  note, and `tina-miniapp url` or `submit` writes it.
 
-An app with neither is agent-only, opens no screen, and must bundle at least one agent.
+An app with neither and no `ui.embed` is agent-only, opens no screen, and must bundle at
+least one agent.
 
 ## Capabilities (`scopes`)
 
@@ -66,11 +70,15 @@ validation rejects duplicates.
   page. Submit refuses a server on a port every HTTP client refuses, 4190 among them.
   `tina_identity` is for a server the app runs itself: nobody connects anything; TINA
   signs the acting person into every call as `x-mcp-<server key>-authorization: Bearer
-  <assertion>`. The header arrives with the key lowercased and every run of other characters
-  turned into `_`, so server `health-api` reads `x-mcp-health_api-authorization`. It carries
+  <assertion>`, with the key lowercased. A key with other characters arrives under two
+  names, each run folded to `_` and to `-`: server `health-api` gets
+  `x-mcp-health_api-authorization` and `x-mcp-health-api-authorization`. Proxies and CDNs,
+  TINA's hosting included, drop the underscore name, so read the dashed one, or use a key of
+  letters and digits only (`validate` warns otherwise). It carries
   the same Ed25519 assertion the page sends the backend. Serve it with
   `createMcpHandler`, or verify it with `tina.verifyMcpIdentity(headers, key)`. On a
-  hosted backend its `url` is a path, such as `/api/mcp`. It requires the `user.context` and
+  hosted backend, or on a self-hosted page that serves `/api/*` itself, its `url` is a path,
+  such as `/api/mcp`. It requires the `user.context` and
   `tenant.identity` scopes, and consent to the live version is re-checked on every call.
 - **`tools`** (max 64): operations the app's interface may invoke, each naming a `tool` on
   one declared `mcp` server. `consequential: true` makes the workspace ask the person to
@@ -119,7 +127,10 @@ trusted for it, and every launch checks again, so an app whose trust is withdraw
 }
 ```
 
-`url` is a path under `/api/` for a hosted backend, and an https URL otherwise.
+`url` is a path under `/api/` for a hosted backend, or for a self-hosted page that serves
+`/api/*` on its own origin, and an https URL otherwise. On a self-hosted page the CLI
+resolves the path against `embed_url` before uploading, because the platform takes only full
+URLs from it; keep the path in the file.
 
 The endpoint must answer a registration challenge by echoing the nonce, both at submit and
 again at publish. A version whose endpoint does not answer is not submitted. Handle the
@@ -142,7 +153,7 @@ send them.
 - A screen (`embed_url` or `hosting`) and the `ui.embed` scope come together: each requires the other.
 - `ui.modules` require a screen.
 - `hosting.frontend.dir` stays inside the project (no `..`).
-- `hooks.url` or an `mcp_servers` `url` that is a path needs `hosting.backend`, and must be under `/api/`.
+- `hooks.url` or an `mcp_servers` `url` that is a path must be under `/api/`, and needs `hosting.backend`. A self-hosted page's paths reach the platform as full URLs on `embed_url`'s origin, resolved by the CLI.
 - `hosting.backend.volume` needs `runtime: "container"`.
 - `chat_cards` require the `ui.chat_card` scope.
 - A module's `roles` must name declared roles.

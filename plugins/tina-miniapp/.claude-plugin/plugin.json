@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "tina-miniapp",
-  "description": "Build a TINA mini app end to end: scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend, run it locally in the sandbox, deploy the page and backend to TINA's hosting, then check and submit it.",
-  "version": "0.4.0",
+  "description": "Build a TINA mini app end to end: scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend, run it locally in the sandbox, deploy the page and backend to TINA's hosting or host them yourself, then check and submit it.",
+  "version": "0.5.0",
   "author": {
     "name": "Tangent 9"
   },
