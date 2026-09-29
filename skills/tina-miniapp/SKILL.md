@@ -1,6 +1,6 @@
 ---
 name: tina-miniapp
-description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda, or a container with a disk) or host them on the partner's own server, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, deploy, env or url, tina-sandbox, a hosting block, embed_url, hosting.backend, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server", "host it ourselves" or names a template instead of saying "mini app".
+description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda, or a container with a disk) or host them on the partner's own server, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, apps create, link, deploy, env or url, tina-sandbox, a hosting block, embed_url, hosting.backend, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server", "host it ourselves" or names a template instead of saying "mini app".
 ---
 
 # Build a TINA mini app
@@ -65,6 +65,7 @@ anything restated here. Read it before writing page code.
 npx tina-miniapp dev --sandbox  # the page, its backend and a local stand-in for TINA
 npx tina-miniapp validate       # the manifest against the platform's own schema
 npx tina-miniapp login          # once per machine; the person approves it in the portal
+npx tina-miniapp apps create    # once per app: the listing, linked to this project
 npx tina-miniapp deploy         # hosted apps: build, upload, and publish on TINA
 npx tina-miniapp env set K v    # a hosted backend's settings and secrets
 npx tina-miniapp url https://…  # self-hosted apps: where the live page is (embed_url)
@@ -72,15 +73,34 @@ npx tina-miniapp doctor         # framing headers and the hook endpoint, against
 npx tina-miniapp submit         # send the version for review
 ```
 
-`submit`, `deploy` and `doctor` find the app by the manifest's `name`, so a listing with
-exactly that name must already exist in the partner portal. Create it there first, or record
-its id once with `npx tina-miniapp link --app <id>`.
+**Every command after `login` works on a listing**, the app's entry in the partner portal.
+They find it through `.tina/project.json` (ids only, safe to commit), else by the manifest's
+`name`. Make it from the terminal with `apps create`, which creates the listing and writes
+that file:
+
+```bash
+npx tina-miniapp apps create --category productivity   # --publisher "Acme" if not the partner's name
+```
+
+At a terminal it asks for the category, the publisher name (the partner's own by default)
+and a one-line tagline. From an agent, pass `--category` so nothing is asked. The categories
+are `shopping`, `finance`, `health`, `education`, `productivity`, `travel`, `lifestyle` and
+`business`; ask the person which fits rather than picking one. `deploy`, `link` and `submit`
+also offer to create the listing when none matches, and take `--create --category <name>`
+where nobody can answer. The listing starts with those few fields only. Tell the person to
+fill in its description, icon and support details on the portal's Listing tab before review.
+
+For a listing that already exists, `npx tina-miniapp apps` lists the partner's listings with
+their ids, and `npx tina-miniapp link --app <id>` records one.
 
 **You cannot sign in for the person.** `login` prints a code and opens the partner portal,
 where they check the code, confirm their password and approve. Ask them to run it, then
-carry on. `npx tina-miniapp whoami` tells you whether they have. CI uses an API key from the
-portal's Developers page as `TINA_PARTNER_KEY` instead; never ask the person to paste one
-into the conversation.
+carry on. `npx tina-miniapp whoami` tells you whether they have. A machine that is already
+signed in stays signed in: running `login` again says as whom and mints no new key, so it
+is safe to run when unsure. `npx tina-miniapp login --force` signs in again, to switch to
+another person or partner, and revokes the old key. `--no-browser` prints the link instead
+of opening a browser, for SSH sessions. CI uses an API key from the portal's Developers page
+as `TINA_PARTNER_KEY` instead; never ask the person to paste one into the conversation.
 
 Run `validate` after every manifest edit rather than at the end. It carries the platform's
 schema, so what it accepts is what upload accepts, and its messages name the field.
@@ -158,6 +178,8 @@ everything `createTina()` needs; `TINA_*`, `AWS_*`, `PORT` and `HOST` cannot be 
 `npx tina-miniapp deploy` runs the project's `build` script (skip it with `--skip-build`),
 uploads the files TINA does not already have, builds the backend, and waits until the deploy
 is live. It prints the app's address, which moves with every deploy, and this deploy's own.
+The listing's **Deployments** tab in the partner portal shows the same deploy step by step
+while it runs, and why it failed if it does, so the person can follow it there.
 Each deploy also uploads a **draft version** pointing at that deploy's own address. That
 draft is what the person runs from the listing's **Sandbox** tab in the partner portal, and
 what `submit` sends for a hosted app. Deploying the same `version` again replaces the
