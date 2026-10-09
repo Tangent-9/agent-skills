@@ -486,6 +486,14 @@ know which one to keep each organisation's data apart. It requests `tenant.ident
 as `tenant_admin`. Both are sensitive and shown at consent. Request them only when the app
 partitions by tenant or offers admin actions. Without the grant the claim is absent.
 
+The assertion names the person by `sub`, never by address. An app that needs to email
+people, or match them to accounts it already holds, requests `user.email` alongside
+`user.context`. The address and `email_verified` then appear in `context().user` and as
+claims in the assertion. It is sensitive. Match accounts on a verified address only, and
+key your own records on `sub`, since a person can change their address. `subscribers()`
+never returns addresses. The sandbox gives Sam a verified address and Alex an unverified
+one, so test both.
+
 ## Before saying it is done
 
 - `npx tina-miniapp validate` passes with no warnings that matter.

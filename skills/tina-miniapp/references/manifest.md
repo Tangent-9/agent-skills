@@ -45,6 +45,7 @@ re-consent before that version reaches them, so ask for what the code uses today
 | Scope | Grants |
 | ----- | ------ |
 | `user.context` | who is using the app, and their locale |
+| `user.email` | the person's sign-in address and whether TINA verified it, in `context().user` and as `email` / `email_verified` in the identity assertion. Needs `user.context`. Sensitive |
 | `tenant.identity` | the tenant's id, in `context()` and as `tenant_id` in the identity assertion. Sensitive |
 | `tenant.roles` | the person's built-in tenant roles, as `tenant_roles` in the identity assertion. Sensitive |
 | `ui.embed` | the app may draw a screen in the workspace |
@@ -159,4 +160,5 @@ send them.
 - A module's `roles` must name declared roles.
 - At most one default role and one default module.
 - An `mcp_servers` entry with `tina_identity` auth requires `user.context` and `tenant.identity`.
+- `user.email` requires `user.context`.
 - No screen means at least one agent.
