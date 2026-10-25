@@ -37,6 +37,36 @@ A screen comes from one of two fields, never both:
 An app with neither and no `ui.embed` is agent-only, opens no screen, and must bundle at
 least one agent.
 
+## `legal`
+
+Required to submit (SDK 0.18 and later). The app runs under the developer's terms, so the
+subscribe screen links them and records who accepted:
+
+```json
+"legal": {
+  "terms_url": "https://example.com/terms",
+  "privacy_url": "https://example.com/privacy",
+  "terms_version": "1.0",
+  "data_region": "Singapore",
+  "dpo_email": "privacy@example.com"
+}
+```
+
+- `terms_url`, `privacy_url`: https. `submit` checks both answer 200, and TINA checks again.
+- `terms_version`: letters, digits, dots and dashes. Raise it when the terms change: every
+  workspace that accepted the old version is asked again, by its admin only.
+- `data_region`: required when any part runs on the developer's own servers (a page they
+  host, an MCP server, a hook endpoint). Leave it out for an app TINA hosts, or an
+  agent-only app with no servers of its own; TINA sets it, and refuses it if you do.
+- `dpo_email`: optional, the contact for access, correction and breach questions.
+
+The templates ship placeholders on `replace-me.invalid`, which `validate` and `submit`
+refuse; `dev` only warns. Ask the person for their real links rather than inventing them.
+
+The app reads acceptance with `tina.terms()`. When `accepted` is false and `can_accept` is
+true, `tina.acceptTerms()` shows the shell's prompt; for anyone else, show a note asking a
+workspace admin to open the app. Do not build an acceptance screen of your own.
+
 ## Capabilities (`scopes`)
 
 Every one is shown at consent. Widening them in a new version makes existing subscribers
@@ -160,6 +190,8 @@ send them.
 - `hosting.frontend.dir` stays inside the project (no `..`).
 - `hooks.url` or an `mcp_servers` `url` that is a path must be under `/api/`, and needs `hosting.backend`. A self-hosted page's paths reach the platform as full URLs on `embed_url`'s origin, resolved by the CLI.
 - `hosting.backend.volume` needs `runtime: "container"`.
+- `legal.data_region` is refused when TINA runs the whole app, and required (by `validate`
+  and submit, not the schema) when any part runs on the developer's servers.
 - `chat_cards` require the `ui.chat_card` scope.
 - A module's `roles` must name declared roles.
 - At most one default role and one default module.
