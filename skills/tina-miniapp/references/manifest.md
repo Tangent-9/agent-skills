@@ -89,7 +89,11 @@ validation rejects duplicates.
 - **`chat_cards`** (max 32): card types the app may post.
 - **`roles`** (max 16): what a person is inside this app. Publishing provisions each as a
   tenant role that a tenant admin assigns. They grant nothing in TINA. At most one is
-  `default`.
+  `default`. Roles apply only to people who have the app: their own subscription, or a
+  seat on their organisation's. A tenant admin's subscribe seats only the people they pick,
+  and a member without a seat cannot open the app at all. Somebody who has the app but no
+  assigned role gets the `default` role, or no role if none is marked. A TINA plan that
+  installs the app by default seats the whole workspace.
 - **`notifications`** (max 16): the reasons the app may interrupt somebody, each one they
   can switch off.
 - **`plans`** (1 to 8): `key`, `price_cents`, optional `name`, `currency` (default `sgd`),
