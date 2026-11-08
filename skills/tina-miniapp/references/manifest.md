@@ -29,6 +29,13 @@ A screen comes from one of two fields, never both:
   | `port` | `8080` | what the server listens on, 1024 to 65535 |
   | `runtime` | `lambda` | `lambda`, or `container` for a server that keeps state itself |
   | `volume.path` | none | `container` only: an absolute path for a disk that survives restarts and redeploys, not a system directory |
+
+  `hosting.database` gives the backend a Postgres database of its own, as `DATABASE_URL`:
+
+  | Field | Default | Meaning |
+  | --- | --- | --- |
+  | `engine` | `postgres` | the only engine |
+  | `migrations` | none | a folder in the project of `.sql` files TINA applies in name order. Names are letters, digits, `.`, `_` and `-`, ending `.sql`. 500 files, 1 MB each, 4 MB in all |
 - **`embed_url`**: the partner hosts the page, over https (loopback http while developing).
   Leave it out until the page is live: the CLI reads a manifest with the `ui.embed` scope
   and neither field as a self-hosted page waiting for its URL. `validate` passes it with a
@@ -194,6 +201,8 @@ when their malware scan ends lists `file.scan_completed`.
 - `hosting.frontend.dir` stays inside the project (no `..`).
 - `hooks.url` or an `mcp_servers` `url` that is a path must be under `/api/`, and needs `hosting.backend`. A self-hosted page's paths reach the platform as full URLs on `embed_url`'s origin, resolved by the CLI.
 - `hosting.backend.volume` needs `runtime: "container"`.
+- `hosting.database` needs `hosting.backend`, and is refused with `runtime: "container"`.
+- `hosting.database.migrations` stays inside the project (no `..`).
 - `legal.data_region` is refused when TINA runs the whole app, and required (by `validate`
   and submit, not the schema) when any part runs on the developer's servers.
 - `chat_cards` require the `ui.chat_card` scope.

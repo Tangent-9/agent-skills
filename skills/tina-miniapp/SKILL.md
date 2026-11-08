@@ -1,6 +1,6 @@
 ---
 name: tina-miniapp
-description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda, or a container with a disk) or host them on the partner's own server, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, apps create, link, deploy, env or url, tina-sandbox, a hosting block, embed_url, hosting.backend, tina.api.files or storing uploaded files, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server", "host it ourselves" or names a template instead of saying "mini app".
+description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda with its own Postgres database, or a container with a disk) or host them on the partner's own server, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, apps create, link, deploy, env or url, tina-sandbox, a hosting block, embed_url, hosting.backend, hosting.database, DATABASE_URL, migrations, tina-miniapp db, tina.api.files or storing uploaded files, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server", "host it ourselves" or names a template instead of saying "mini app".
 ---
 
 # Build a TINA mini app
@@ -150,7 +150,7 @@ so the page works the same way.
 
 | `runtime` | Choose it when |
 | --- | --- |
-| `lambda` (default) | the server keeps its state in a database or another service. It starts per request, may run as many copies as there are requests, and keeps nothing on disk or in memory |
+| `lambda` (default) | the server keeps its state in a database (TINA's, with `hosting.database`, or its own) or another service. It starts per request, may run as many copies as there are requests, and keeps nothing on disk or in memory |
 | `container` | the server keeps state itself: a SQLite file, an in-memory cache it cannot lose, a websocket. One container runs all the time on a machine of the app's own |
 
 A `container` may ask for a disk: `"volume": { "path": "/data" }` is mounted there and
@@ -161,6 +161,87 @@ must listen on `0.0.0.0` (TINA sets `HOST` to it), not `127.0.0.1`, or nothing o
 the container reaches it. Its first deploy takes a few minutes longer while the machine
 starts. A `lambda` backend with a SQLite file loses it, and each copy has its own.
 
+### A database of its own
+
+A `lambda` backend can ask TINA for a Postgres database:
+
+```json
+{ "hosting": { "backend": {}, "database": { "migrations": "migrations" } } }
+```
+
+TINA creates two databases for the app, each with a login of its own, and hands the
+backend its `DATABASE_URL`. `TINA_ENVIRONMENT` says which one it got:
+
+| `TINA_ENVIRONMENT` | Who uses it |
+| --- | --- |
+| `draft` | every deploy, the Sandbox tab and the reviewer. Created on the first deploy |
+| `live` | subscribers. Created when a reviewer approves the first version |
+
+They sit on separate servers, and draft code cannot reach the live one. The servers are
+private: only the app's backend reaches them. There is no command that prints the
+connection string, so a person cannot point a local client or a migration tool at the
+hosted database. `npx tina-miniapp db` shows which databases exist. A `container` cannot
+declare a database yet; it keeps using a `volume`.
+
+Connect with the SDK's database subpath and install `postgres` beside it:
+
+```ts
+import { connectDatabase } from "@tangent-9/miniapps-sdk/database";
+import { drizzle } from "drizzle-orm/postgres-js";
+
+const db = connectDatabase();             // reads DATABASE_URL
+const rows = await db.sql`select * from invoices where tenant_id = ${tenantId}`;
+await db.transaction(async (tx) => tx`update invoices set paid = true where id = ${id}`);
+export const orm = drizzle(db.client);   // Drizzle takes the driver as it is
+```
+
+Create it once per process, outside the handler. It keeps one connection on Lambda and five
+elsewhere, and each login is limited to 10, so do not open a pool per request. The servers
+accept TLS only, and the URL already says so (`sslmode=require`). Another driver works too,
+with `DATABASE_URL` as given, except that `pg` reads `sslmode=require` as "verify the
+certificate" and fails: append `&uselibpqcompat=true` with `pg`.
+
+**TINA runs the migrations, never the app.** They are `.sql` files in the folder
+`hosting.database.migrations` names, applied in name order, each once, each in a
+transaction. `deploy` uploads them, and TINA applies new ones to the draft database before
+the new backend starts. A migration that fails fails the deploy with the file's name and
+Postgres's error. Approving a version applies the files the live database lacks, then
+publishes the version. If that fails, subscribers stay on the version they had, and the
+review shows the error. The reviewer sees the SQL approval would run, with drops,
+truncates, deletes, renames and type changes flagged.
+
+```bash
+npx tina-miniapp db new add invoices   # migrations/20261106093000_add_invoices.sql
+npx tina-miniapp db migrate            # applies them to a local DATABASE_URL
+npx tina-miniapp dev                   # applies them first when DATABASE_URL is set
+```
+
+`drizzle-kit generate` writes files TINA accepts too; point its `out` at the folder. Do not
+run `drizzle-kit migrate` or `push` against TINA, and do not migrate from the backend at
+startup. The local commands use the runner TINA uses, so test against a local Postgres
+(`docker run -e POSTGRES_PASSWORD=x -p 5432:5432 postgres:16`).
+
+Four rules come with that:
+
+- **A file that has run never changes.** Editing it fails the next deploy. Fix it with a
+  new file.
+- **New files sort last.** A file that sorts before one already applied is refused, which
+  is why `db new` puts a timestamp first.
+- **The live version keeps running while the live database migrates.** Add columns and
+  tables before the code that needs them, and drop old ones a version later. A rename or a
+  `NOT NULL` column without a default breaks the version still serving subscribers.
+- **Some statements cannot run in a transaction**, such as `CREATE INDEX CONCURRENTLY`. Put
+  `-- tina:no-transaction` on the file's first line and keep that file to one statement.
+
+The app's login owns its database and can do anything inside it, but it cannot create
+roles or databases or reach any other app's. Partition rows by `tenant_id` from the
+identity claims, as for any other store.
+
+Without `hosting.database`, `DATABASE_URL` is the partner's to set with
+`tina-miniapp env`, for a database the app keeps elsewhere. With it, TINA's value wins.
+Values set with `tina-miniapp env` reach the draft and the live backend alike. When the two
+need different keys, set both under different names and pick one by `TINA_ENVIRONMENT`.
+
 `deploy` tars the backend's `dir` (leaving out `node_modules`, `.git`, `.env*` and whatever
 `.dockerignore` names; 8 MB at most) and TINA builds the Dockerfile for arm64. A build that
 fails, or a server that does not answer on `port`, fails the deploy with the end of its
@@ -169,7 +250,7 @@ log. Read that output before changing anything.
 **Settings and secrets go in `tina-miniapp env`, never in the image or the repo.**
 
 ```bash
-npx tina-miniapp env set DATABASE_URL postgres://…
+npx tina-miniapp env set STRIPE_SECRET_KEY sk_live_…
 cat key.pem | base64 | npx tina-miniapp env set PRIVATE_KEY_B64   # values are one line
 npx tina-miniapp env                                              # names only
 ```
@@ -208,7 +289,10 @@ make all of them before the first deploy:
 1. Replace `embed_url` with `hosting`: `frontend.dir` is the page's build output, and
    `backend` names the Dockerfile and the port the server listens on. A server that keeps a
    SQLite file or other local state is `runtime: "container"` with a `volume` at the
-   directory the file lives in. Uploads it kept on disk move to `tina.api.files`.
+   directory the file lives in. A `lambda` on Postgres can keep its own `DATABASE_URL`, or
+   declare `hosting.database` and move its schema into migration files. TINA starts it
+   empty and nothing copies the old rows in. Uploads it kept on disk move to
+   `tina.api.files`.
 2. Move every backend route the manifest names under `/api/` (hooks, MCP), keeping the old
    paths too while the old host is still in use.
 3. Write `hooks.url` and the app's own `mcp_servers[].url` as those paths.
@@ -645,6 +729,9 @@ only when `hooks.events` lists it.
   other local state is a `container` with a `volume`, not a `lambda`.
 - Uploads go through `tina.api.files`, not onto a volume. The app handles `files.scan_pending`,
   and in the sandbox it was run with `scan_result` set to `rejected` and to `unscannable`.
+- For a hosted database: the migrations apply to a local Postgres with `tina-miniapp db
+  migrate`, the deploy output lists them as applied, and no file that already ran was
+  edited. Say that the live database only migrates when a reviewer approves.
 - Every scope in the manifest is one the code actually uses.
 - If the app was meant to match the workspace, its type in the sandbox is the same face as
   the header above it. A different face means the font link is missing. An app with its own
