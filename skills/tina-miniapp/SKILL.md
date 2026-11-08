@@ -1,6 +1,6 @@
 ---
 name: tina-miniapp
-description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda, or a container with a disk) or host them on the partner's own server, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, apps create, link, deploy, env or url, tina-sandbox, a hosting block, embed_url, hosting.backend, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server", "host it ourselves" or names a template instead of saying "mini app".
+description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda, or a container with a disk) or host them on the partner's own server, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, apps create, link, deploy, env or url, tina-sandbox, a hosting block, embed_url, hosting.backend, tina.api.files or storing uploaded files, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server", "host it ourselves" or names a template instead of saying "mini app".
 ---
 
 # Build a TINA mini app
@@ -12,7 +12,8 @@ Or the partner hosts them, and tells TINA the page's URL once it is live.
 The division of labour is the thing to hold onto. TINA owns the subscription, the session and the consent. Your
 service owns the records the app is actually about. That is true of the apps TINA
 publishes itself, so a design that wants TINA to store the app's data is fighting the
-platform.
+platform. Uploaded files are the exception: TINA keeps the bytes for the app with
+`tina.api.files`, and the app's own records point at them by key.
 
 ## Scaffold, do not hand-write
 
@@ -150,10 +151,12 @@ so the page works the same way.
 | `runtime` | Choose it when |
 | --- | --- |
 | `lambda` (default) | the server keeps its state in a database or another service. It starts per request, may run as many copies as there are requests, and keeps nothing on disk or in memory |
-| `container` | the server keeps state itself: a SQLite file, files on disk, an in-memory cache it cannot lose, a websocket. One container runs all the time on a machine of the app's own |
+| `container` | the server keeps state itself: a SQLite file, an in-memory cache it cannot lose, a websocket. One container runs all the time on a machine of the app's own |
 
 A `container` may ask for a disk: `"volume": { "path": "/data" }` is mounted there and
-survives restarts and every redeploy. Point the app's database file at it. A container
+survives restarts and every redeploy. Point the app's database file at it. Nothing backs
+the volume up, so keep it to state like that and store uploads with `tina.api.files`
+("Storing uploads", below), on either runtime. A container
 must listen on `0.0.0.0` (TINA sets `HOST` to it), not `127.0.0.1`, or nothing outside
 the container reaches it. Its first deploy takes a few minutes longer while the machine
 starts. A `lambda` backend with a SQLite file loses it, and each copy has its own.
@@ -205,7 +208,7 @@ make all of them before the first deploy:
 1. Replace `embed_url` with `hosting`: `frontend.dir` is the page's build output, and
    `backend` names the Dockerfile and the port the server listens on. A server that keeps a
    SQLite file or other local state is `runtime: "container"` with a `volume` at the
-   directory the file lives in.
+   directory the file lives in. Uploads it kept on disk move to `tina.api.files`.
 2. Move every backend route the manifest names under `/api/` (hooks, MCP), keeping the old
    paths too while the old host is still in use.
 3. Write `hooks.url` and the app's own `mcp_servers[].url` as those paths.
@@ -282,7 +285,8 @@ Use it for what is hard to reach on a real workspace:
 
 The sandbox refuses what TINA refuses, with the same error codes, so treat a refusal there
 as a bug in the app. `tina-sandbox.json` beside the manifest overrides the fixtures: the
-people, canned tool answers and starting storage.
+people, canned tool answers, starting storage and how `tina.api.files` behaves (its `files`
+block, under "Storing uploads").
 
 It stands in for the workspace but is not it. Its key is not TINA's, and `doctor` against
 the running app is still the check for framing headers.
@@ -394,7 +398,7 @@ const tina = createTina({ appId: process.env.TINA_APP_ID!, issuer: process.env.T
 
 Add `credential: process.env.TINA_APP_CREDENTIAL` (a `tinaak_…` a platform admin issues)
 only when the backend calls TINA back: `tina.api.notify()` under a declared `notifications`
-category, or `tina.api.subscribers()`. Verifying needs no credential.
+category, `tina.api.subscribers()`, or `tina.api.files`. Verifying needs no credential.
 
 **Give the app's agent tools with an MCP server of its own.** Declare it with
 `auth: "tina_identity"` and serve it with `createMcpHandler`. TINA signs the person the
@@ -494,6 +498,133 @@ key your own records on `sub`, since a person can change their address. `subscri
 never returns addresses. The sandbox gives Sam a verified address and Alex an unverified
 one, so test both.
 
+## Storing uploads
+
+Keep the files people upload (receipts, CVs, photos) in TINA with `tina.api.files`, not on
+the backend's disk. A `lambda` keeps nothing on disk, and a container's `volume` has no
+backup and is lost with its machine. A `volume` is still right for a SQLite file or other
+state the server owns; uploads are not that. Files are kept per app and per tenant in a
+private bucket. The backend holds no AWS key: TINA signs a short-lived URL and the bytes go
+straight between the backend and the bucket. Read "Storing files" in the installed SDK's
+README for the exact version's surface.
+
+**Add `files` to the manifest's `scopes`.** Without it every call fails with
+`files.scope_missing`. Like any new scope, the version that adds it sends every existing
+subscriber of a live app through re-consent once, and does not reach them until they
+accept. Add it in the version that first stores a file. TINA checks the scope against the
+published manifest, not against each person's grant, because the files belong to the
+workspace's use of the app and a job has no person to ask.
+
+`tina.api.files` calls TINA back, so `createTina` needs the app credential. On a hosted
+backend `tina-miniapp env` refuses `TINA_*` names, so store the `tinaak_…` under another
+name (`npx tina-miniapp env set APP_CREDENTIAL …`) and pass that as `credential`.
+
+**Say whose files they are before anything else.**
+
+| Call | Use it | The tenant comes from |
+| --- | --- | --- |
+| `forPerson(identityToken)` | while handling a person's request | the identity token their page sent (what `useBackend()` attached) |
+| `forTenant(tenantId)` | for work with no person behind it: hooks, imports, scheduled jobs | the id you pass, checked against the app's subscribers |
+
+Prefer `forPerson` whenever there is a token. TINA can only check that a `forTenant` tenant
+subscribes to the app, so it cannot tell a job from a bug, and it audits every such call. A
+tenant with no subscriber answers `404`.
+
+```ts
+import { createTina, TinaApiError } from "@tangent-9/miniapps-sdk/server";
+
+const claims = await tina.verifyIdentity(bearerToken);
+const files = tina.api.files.forPerson(bearerToken); // or forTenant(event.data.tenant_id)
+const mine = `people/${claims.sub}/`;
+
+await files.put(`${mine}receipts/42.pdf`, bytes, "application/pdf");
+const { body, file } = await files.get(`${mine}receipts/42.pdf`);
+
+// Whoever holds this URL can use it until it expires, and it cannot be revoked.
+const { url } = await files.signedUrl(`${mine}receipts/42.pdf`, { expiresIn: 300 });
+
+await files.head(`${mine}receipts/42.pdf`); // metadata, including scan_status
+await files.list({ prefix: `${mine}receipts/`, limit: 50 });
+await files.delete(`${mine}receipts/42.pdf`);
+await files.deletePrefix(mine);
+await files.usage(); // bytes_used, file_count, quota_bytes, max_file_bytes
+```
+
+What that means for the app's code:
+
+- **The key is the app's own name for the file**, already inside this app and this tenant,
+  so do not put the tenant id in it. `put` on an existing key replaces the file.
+- **TINA separates tenants, not people.** Any call for a tenant reaches every file of that
+  tenant. When files belong to one person, give their keys that person's prefix and check
+  `claims.sub` (or the person's role) before reading, signing or deleting one.
+- **Check who may have a file before `signedUrl`.** `expiresIn` is 60 to 900 seconds,
+  300 by default. Downloads save as attachments; `disposition: "inline"` is honoured only
+  for PDF, plain text, GIF, JPEG, PNG and WebP.
+- **Read the limits from `usage()`, do not hard-code them.** One file may be up to
+  `max_file_bytes` and one tenant may hold `quota_bytes` for this app, both set by TINA
+  and the plan.
+
+**Every new file is scanned for malware where TINA has scanning on.** Until the scan ends,
+reading the file throws `files.scan_pending`. Pass `{ waitForScan: true }` (or
+`{ waitForScan: { timeoutMs } }`) to `put` when the request reads the file straight back,
+or list `file.scan_completed` in `hooks.events` and act when it arrives. Its data carries
+`tenant_id`, `file_id`, `key` and `scan_status`. Where scanning is off, files read as
+`skipped` and are served.
+
+Errors are `TinaApiError` with `code` and `status`. Handle each of these on purpose:
+
+| `code` | Means | What the app does |
+| --- | --- | --- |
+| `files.scan_pending` | the scan has not finished, or `waitForScan` timed out | show "checking the file" and retry, or wait for the hook |
+| `files.scan_rejected` | the scanner found a threat and TINA removed the file | tell the person it was refused. The key is free again and the bytes stop counting |
+| `files.unscannable` | the scanner could not read it, such as a password-protected archive | ask for a version it can read |
+| `files.too_large` | the file is over `max_file_bytes` | say the limit; check the size before uploading |
+| `files.quota_exceeded` | the tenant's files for this app are at `quota_bytes` | say so, and offer to delete old files |
+| `files.read_only` | the tenant's subscription has ended | read and delete only |
+
+```ts
+try {
+  await files.put(key, bytes, mimeType, { waitForScan: true });
+} catch (err) {
+  if (err instanceof TinaApiError && err.code === "files.scan_rejected") {
+    return reply.code(422).send({ error: "That file was refused by the virus scan." });
+  }
+  throw err;
+}
+```
+
+**When a subscription ends, TINA keeps the tenant's files for 30 days**, read-only
+(`files.read_only` on `put`), then deletes them. Resubscribing within that time cancels the
+deletion. The `tenant.offboarding` and `subscription.ended` handlers do not have to delete
+files, though they may. `user.deletion_requested` is different: TINA does not know which
+of a tenant's files are that person's, so delete them yourself, which is one
+`deletePrefix` when their keys share a prefix.
+
+**The sandbox stands in for all of it**, with no AWS account. It keeps the bytes in
+`.tina-sandbox/files`, and the `files` block of `tina-sandbox.json` sets how its pretend
+scanner and limits behave:
+
+```json
+{
+  "files": {
+    "scan_result": "clean",
+    "scan_delay_ms": 2000,
+    "quota_bytes": 10485760,
+    "max_file_bytes": 1048576
+  }
+}
+```
+
+| Field | Default | Use it to |
+| --- | --- | --- |
+| `scan_result` | `clean` | see the app handle `rejected` and `unscannable` |
+| `scan_delay_ms` | `0` | hold files in `pending` for that long, to test `files.scan_pending` and `waitForScan` |
+| `quota_bytes` | 5 GiB | reach `files.quota_exceeded` without uploading gigabytes |
+| `max_file_bytes` | 100 MiB | reach `files.too_large` with a small file |
+
+When a scan ends the sandbox sends `file.scan_completed` to the backend, as TINA does, and
+only when `hooks.events` lists it.
+
 ## Before saying it is done
 
 - `npx tina-miniapp validate` passes with no warnings that matter.
@@ -510,8 +641,10 @@ one, so test both.
   `doctor` passes against the live host. If the page is not live yet, say so and leave
   `embed_url` unset rather than filling it in.
 - For a hosted backend: every route it needs is under `/api/`, it answers there after the
-  deploy (a 401 without an identity is an answer), and a server that keeps files is a
-  `container` with a `volume`, not a `lambda`.
+  deploy (a 401 without an identity is an answer), and a server that keeps a SQLite file or
+  other local state is a `container` with a `volume`, not a `lambda`.
+- Uploads go through `tina.api.files`, not onto a volume. The app handles `files.scan_pending`,
+  and in the sandbox it was run with `scan_result` set to `rejected` and to `unscannable`.
 - Every scope in the manifest is one the code actually uses.
 - If the app was meant to match the workspace, its type in the sandbox is the same face as
   the header above it. A different face means the font link is missing. An app with its own

@@ -83,6 +83,7 @@ re-consent before that version reaches them, so ask for what the code uses today
 | `tasks.create` | the app may create tasks |
 | `workflows.create` | the app may create workflows |
 | `storage` | per-app key-value storage, with a quota |
+| `files` | the backend may keep uploaded files in TINA with `tina.api.files`, per app and tenant. Checked against the published manifest, not each person's grant. Adding it to a live app sends its subscribers through re-consent once |
 | `events` | the page may send its own analytics events with `tina.emit()`. Listening with `useAppEvent` needs no scope |
 | `tools.invoke` | the app's interface may call its declared tools. Required whenever `tools` is non-empty |
 
@@ -176,6 +177,9 @@ The three obligation events (`user.deletion_requested`, `tenant.offboarding`,
 `data.export_requested`) are delivered to every app with a `hooks.url`, whether or not
 `events` lists them. An app with no `hooks` block gets none, and the sandbox refuses to
 send them.
+
+Every other event arrives only when `events` lists it. An app that stores files and acts
+when their malware scan ends lists `file.scan_completed`.
 
 ## Cross-field rules validation enforces
 
