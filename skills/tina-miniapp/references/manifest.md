@@ -186,7 +186,8 @@ The three obligation events (`user.deletion_requested`, `tenant.offboarding`,
 send them.
 
 Every other event arrives only when `events` lists it. An app that stores files and acts
-when their malware scan ends lists `file.scan_completed`.
+when their malware scan ends lists `file.scan_completed`. An app that keeps its own record
+of its super admins lists `app.super_admin.granted` and `app.super_admin.revoked`.
 
 ## Cross-field rules validation enforces
 
