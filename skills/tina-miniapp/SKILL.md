@@ -1,6 +1,6 @@
 ---
 name: tina-miniapp
-description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda with its own Postgres database, or a container with a disk) or host them on the partner's own server, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, apps create, link, deploy, env or url, tina-sandbox, a hosting block, embed_url, hosting.backend, hosting.database, DATABASE_URL, migrations, tina-miniapp db, tina.api.files or storing uploaded files, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server", "host it ourselves" or names a template instead of saying "mini app".
+description: Build a TINA mini app end to end. Scaffold it, write its tina-miniapp.json manifest, wire the browser SDK and the app's own backend and MCP server, run it locally in the sandbox, deploy the page and backend to TINA's own hosting (Lambda with its own Postgres database, or a container with a disk) or host them on the partner's own server, then check and submit it. Use this whenever someone wants to build, extend, debug, test, deploy, migrate or ship an app for the TINA workspace, or is working in a project that has a tina-miniapp.json, or mentions tina-miniapp.json, @tangent-9/miniapps-sdk, create-tina-miniapp, tina-miniapp login, apps create, link, deploy, env or url, tina-sandbox, a hosting block, embed_url, hosting.backend, hosting.database, DATABASE_URL, migrations, tina-miniapp db, tina.api.files or storing uploaded files, super admins, launch_mode or a console view, app scopes and plans, lifecycle hooks, a tina_identity MCP server, a mini app agent, or an app that gets framed by TINA. Reach for it even when the request says "an app for TINA", "put my app on TINA", "move my app off my own server", "host it ourselves" or names a template instead of saying "mini app".
 ---
 
 # Build a TINA mini app
@@ -366,6 +366,8 @@ Use it for what is hard to reach on a real workspace:
 - Send any hook, obligations included (they need a `hooks.url`), and watch the acknowledgement land:
   `npx tina-sandbox hook user.deletion_requested`.
 - Run the check submit runs: `npx tina-sandbox challenge`.
+- Make the person a super admin, or open the app as a console, from the Session tab
+  ("Super admins and the console").
 
 The sandbox refuses what TINA refuses, with the same error codes, so treat a refusal there
 as a bug in the app. `tina-sandbox.json` beside the manifest overrides the fixtures: the
@@ -557,12 +559,12 @@ Authorization is a backend decision against a verified token:
 
 ```ts
 const claims = await tina.verifyIdentity(bearerToken);
-const roles = Array.isArray(claims.roles) ? (claims.roles as string[]) : [];
-if (!roles.includes("hr-admin")) return reply.code(403).send();
+if (!claims.roles.includes("hr-admin")) return reply.code(403).send();
 ```
 
-`roles` holds the manifest's own role keys. The `IdentityClaims` type does not declare it,
-so read it as above rather than destructuring.
+`roles` holds the manifest's own role keys. From SDK 0.19.0 `verifyIdentity` always returns
+it, as `[]` when the token carries none. On an older SDK the type does not declare it, so
+read it with `Array.isArray(claims.roles)` first.
 
 `useRoles()` and `<RequireRole>` in the page are for layout only. A page cannot authorize
 itself, and treating those hooks as a permission check is the classic mistake.
@@ -581,6 +583,135 @@ claims in the assertion. It is sensitive. Match accounts on a verified address o
 key your own records on `sub`, since a person can change their address. `subscribers()`
 never returns addresses. The sandbox gives Sam a verified address and Alex an unverified
 one, so test both.
+
+## Super admins and the console
+
+A Partner Admin can make people on the partner's own team super admins of the app, in the
+partner portal. A role is per workspace: a tenant admin assigns it to people inside one. A
+super admin is the vendor's own staff, such as its support team, and counts in every
+workspace that subscribes. TINA says who they are. What they may do inside the app is the
+app's decision, and an app that ignores the flag treats them like anyone else.
+
+TINA tells the app in four places:
+
+| Where | What it carries |
+| --- | --- |
+| `context()`, and `tina.isSuperAdmin` from the handshake | `super_admin: true \| false` for the person using the page |
+| the identity assertion | the same `super_admin` claim, signed |
+| `tina.api.superAdmins.list()` | every super admin who counts now: `user_id`, `partner_user_id`, `name`, `email`, `granted_at` |
+| `app.super_admin.granted` / `app.super_admin.revoked` hooks | each change, with the person and a `reason` |
+
+The flag is the same wherever the person opens the app. A super admin who is also a member
+of a customer's workspace is a super admin there too. It counts only while their partner
+membership is active: deactivating them sends `revoked`, reactivating them sends `granted`.
+
+**Gate admin screens in the page, enforce them in the backend.** `useSuperAdmin()` and
+`<RequireSuperAdmin>` are layout, like `useRoles()`:
+
+```tsx
+import { RequireSuperAdmin } from "@tangent-9/miniapps-sdk/react";
+
+<RequireSuperAdmin fallback={null}>
+  <SupportTools />
+</RequireSuperAdmin>
+```
+
+The backend checks the claim on every request that does admin work:
+
+```ts
+const claims = await tina.verifyIdentity(bearerToken);
+if (!claims.super_admin) return reply.code(403).send();
+```
+
+Do not cache the flag past the assertion's `exp`, for the same reason as `roles`: a revoked
+super admin would keep their access.
+
+**A super admin can also open the app as a console**, from "Open as super admin" on the
+app's page in the partner portal. A console has no workspace behind it. It runs the newest
+published version, and `launch_mode` is `"console"` instead of `"workspace"`:
+
+- `context()` has `tenant: null`, empty `roles` and `agents`, and `super_admin: true`.
+- The identity assertion has `tenant_type: null`, no `tenant_id` or `tenant_roles`, and
+  `roles: []`.
+- The session holds only `user.context` and `user.email`. `context()` and `identity()` are
+  the only calls that work. Every other call fails with `session.console_unsupported`,
+  because it reads or writes one workspace's data. TINA also refuses a console's identity
+  assertion as `onBehalfOf` for `tina.api.ai.chat`.
+
+So the console is a separate tree, and its data comes from the app's backend. Split the two
+at the top with `<LaunchModeSwitch>`:
+
+```tsx
+import { LaunchModeSwitch } from "@tangent-9/miniapps-sdk/react";
+
+<LaunchModeSwitch workspace={<Today />} console={<AllCustomers />} />
+```
+
+`<AllCustomers>` calls the app's own backend through `useBackend()`, which still attaches an
+identity assertion. The backend checks `launch_mode === "console"` and `super_admin`, then
+does the cross-workspace work with its app credential and its own records:
+`tina.api.subscribers()`, `tina.api.files.forTenant(tenantId)`, its database. Never let a
+console request reach a call made for a person (`forPerson`, `onBehalfOf`), since there is
+no workspace to act in.
+
+```ts
+const claims = await tina.verifyIdentity(bearerToken);
+if (claims.launch_mode !== "console" || !claims.super_admin) return reply.code(403).send();
+const people = await tina.api.subscribers(); // every tenant, ids and roles only
+```
+
+`useLaunchMode()` and `tina.launchMode` give the mode outside the switch. Both values come
+in the bridge handshake, so they are there on the first render, before `context()` resolves.
+
+**`context()` is a union on `launch_mode` from SDK 0.19.0**, and this breaks TypeScript.
+Code that reads `context.tenant.type` no longer compiles, because `tenant` is `null` in a
+console. Check the mode first:
+
+```ts
+const ctx = await tina.context();
+const workspace = ctx.launch_mode === "console" ? null : ctx.tenant.type;
+```
+
+`IdentityClaims.tenant_type` is `string | null` for the same reason. When moving an app to
+0.19.0, run the type check and fix each place it flags rather than asserting the type away.
+
+**Keep the backend's list in step with the two hooks.** List `app.super_admin.granted` and
+`app.super_admin.revoked` in `hooks.events` when the app keeps its own admin accounts or
+grants. Each carries `user_id` (the `sub` of that person's identity assertion),
+`partner_user_id`, `name`, `email` and `reason`: `assigned` or `unassigned` for a change in
+the portal, `membership_deactivated` or `membership_reactivated` when their partner
+membership changed. There is no tenant, because a super admin covers every workspace.
+
+```ts
+const { event, challenge } = await tina.verifyHook<{ user_id: string }>({
+  headers: req.headers,
+  rawBody: req.rawBody,
+});
+if (challenge) return reply.send({ challenge });
+if (event.type === "app.super_admin.revoked") await admins.remove(event.data.user_id);
+```
+
+Hooks can be missed, so reconcile against `tina.api.superAdmins.list()` after downtime. That
+call needs the app credential. Its entries have names and addresses, unlike `subscribers()`,
+because they are the partner's own staff.
+
+**Try it in `tina-sandbox`.** Set `"super_admin": true` on a person in `tina-sandbox.json`,
+or tick "Super admin of this app" in the Session tab. Then tick "Open as super admin, with
+no workspace (console)" and relaunch. The sandbox opens a console only for a super admin,
+refuses every call but `context()` and `identity()` with `session.console_unsupported`, and
+answers `tina.api.superAdmins.list()` from the people marked super admin:
+
+```json
+{
+  "people": [
+    { "display_name": "Priya Admin", "roles": ["admin"], "tenant_roles": ["tenant_admin"], "super_admin": true },
+    { "display_name": "Sam Member", "tenant_type": "family" }
+  ]
+}
+```
+
+Sandbox test users on a real TINA are never super admins, because they are not partner
+users. Try the console from the partner portal after a publish, as a super admin.
 
 ## Storing uploads
 
@@ -733,6 +864,9 @@ only when `hooks.events` lists it.
   migrate`, the deploy output lists them as applied, and no file that already ran was
   edited. Say that the live database only migrates when a reviewer approves.
 - Every scope in the manifest is one the code actually uses.
+- If the app gives super admins anything, the backend checks `super_admin` on the assertion,
+  not the page. If it has a console, the sandbox opened it and no screen in it called
+  anything but the backend, `context()` and `identity()`.
 - If the app was meant to match the workspace, its type in the sandbox is the same face as
   the header above it. A different face means the font link is missing. An app with its own
   design is supposed to look different, so this one does not apply.
