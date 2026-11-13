@@ -387,7 +387,7 @@ The fields, what each one governs, and the full capability list are in
 [references/manifest.md](references/manifest.md). Read it when writing or changing a
 manifest.
 
-Two rules worth knowing before you write one:
+Three rules worth knowing before you write one:
 
 **Ask for the narrowest scopes the app can work with.** Every scope is shown to the person
 at consent, and a new version that widens them makes every existing subscriber re-consent
@@ -397,6 +397,11 @@ the whole install base.
 **What `connect()` grants can be narrower than what the manifest requests.** People revoke
 individual capabilities. Check `tina.has("storage")` and degrade, rather than assuming the
 manifest was honoured in full.
+
+**Leave an agent's `model` out unless the app needs a particular one.** Left out, it is
+`auto` and TINA picks. A pinned model is billed to every subscriber's credits and shown on
+the listing, so pin one only for a reason the person gave, such as a task a smaller model
+gets wrong. An id TINA cannot serve fails `submit`.
 
 ## How the page reaches TINA, and why it matters
 

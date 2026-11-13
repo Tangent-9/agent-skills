@@ -102,8 +102,17 @@ SDK method or endpoint uses them yet. Requesting one adds a line at consent and 
 Each entry has a `key` unique within its own list (`chat_cards` use `type` instead), and
 validation rejects duplicates.
 
-- **`agents`** (max 16): `key`, `name`, `persona`, `instructions`, `skills`, `rules`, `mcp`.
-  Anything in `mcp` must name a server this manifest declares.
+- **`agents`** (max 16): `key`, `name`, `persona`, `instructions`, `skills`, `rules`, `mcp`,
+  `model`, `share`. Anything in `mcp` must name a server this manifest declares.
+  - `model`: the model the agent runs on. Leave it out, or set `"auto"`, and TINA picks.
+    Otherwise give a gateway id such as `"anthropic:claude-sonnet-5"`. Submit refuses an id
+    the platform cannot serve (`app.agent_model_unavailable`, on field `agents.<n>.model`).
+    Subscribers pay for the agent's answers in their own credits, so a larger model costs
+    them more, and the app's listing and subscribe screen show each agent's model. The
+    partner portal's Agents tab and a platform admin can override it without a new
+    version, and every later publish keeps that override until someone clears it. A cleared
+    override goes back to this field. A shared agent (`share: "partner"`) runs on the model
+    of the app that declared it first.
 - **`mcp_servers`** (max 16): the servers the app's agents may reach. Auth is `none`,
   `static`, `oauth2` or `tina_identity`. Credentials stay in TINA's vault, never in the
   page. Submit refuses a server on a port every HTTP client refuses, 4190 among them.
