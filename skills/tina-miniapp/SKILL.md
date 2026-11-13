@@ -35,7 +35,8 @@ npx @tangent-9/create-tina-miniapp <dir> --template fullstack --hosting tina --i
 
 `--hosting tina` (the default) lets TINA host the page; `--hosting self` is the partner's
 own server, covered below. Ask the person which they want if the request does not say.
-`--yes` takes every default and installs nothing.
+`--yes` takes every default and installs nothing. `--ui` starts the app on the SDK's
+optional UI kit (see "The app's design" below); leave it off unless the person asks for it.
 
 The CLI installs with, and prints commands for, whichever package manager ran it: npm,
 pnpm, yarn or bun. The project's README uses the same one. Where this skill writes
@@ -70,7 +71,7 @@ npx tina-miniapp apps create    # once per app: the listing, linked to this proj
 npx tina-miniapp deploy         # hosted apps: build, upload, and publish on TINA
 npx tina-miniapp env set K v    # a hosted backend's settings and secrets
 npx tina-miniapp url https://…  # self-hosted apps: where the live page is (embed_url)
-npx tina-miniapp doctor         # framing headers and the hook endpoint, against a running app
+npx tina-miniapp doctor         # framing headers, the hook endpoint and DESIGN.md, against a running app
 npx tina-miniapp submit         # send the version for review
 ```
 
@@ -447,15 +448,37 @@ whichever module the header opened and `useNavigate()` moves between them. A pag
 add to the menu, rename an item, or reorder the platform's entries. If a design calls for
 that, the answer is a manifest change, not a runtime one.
 
-The kit (`Button`, `Card`, `Dialog`, `Tabs`, `ListRow`, `Fields`, `FilterBar`, `ListState`,
-`Masked`, `ToastProvider`) is styled by `theme.css`, which carries the workspace's own
-tokens, type and component shapes. Build from it and the app reads as part of the page it
-is framed in. On Tailwind v4, import `@tangent-9/miniapps-sdk/tailwind.css` for the same
-tokens as utilities.
+### The app's design
 
-None of it is required. A partner with their own design system should use it: redefining
-`--tina-*` on `:root` carries the kit along, and an app styled entirely its own way passes
-review and runs fine. Ask which the partner wants rather than assuming the default.
+The app's look is its own. A partner with their own design system keeps it: redefining
+`--tina-*` on `:root` carries the SDK's kit along, and an app styled entirely its own way
+passes review and runs fine. Whatever the app looks like, the workspace owns the header and
+its menu, the permission and exit sheets, and confirmation of a consequential action.
+
+The design an agent follows is the `DESIGN.md` at the app's root. Its YAML front matter, in
+Google Stitch's DESIGN.md format, sets the colour, type, radius, spacing and component
+tokens. Its Do's and Don'ts section sets the UI rules. Every scaffolded app has one.
+
+1. Before building or changing a screen, read the root `DESIGN.md`. Use its token values
+   and follow its Do's and Don'ts. Don't invent a colour, size or component it already
+   names.
+2. If the app imports `@tangent-9/miniapps-sdk/ui` or `@tangent-9/miniapps-sdk/ui.css`, it
+   is on the SDK's optional UI kit. Use the kit's components for everything the kit covers:
+   page headers, sections, forms, popups with `usePopupFlow`, `DateField`, lists and
+   dashboards. `GUIDE`, exported from `/ui`, says when to use each one. Otherwise use the
+   SDK's `./react` kit (`Button`, `Card`, `Dialog`, `Tabs`, `ListRow`, `Fields`,
+   `FilterBar`, `ListState`, `Masked`, `ToastProvider`), styled by `theme.css`. On
+   Tailwind v4, `@tangent-9/miniapps-sdk/tailwind.css` gives the same tokens as utilities.
+   Never add the UI kit to an app on your own: that is the builder's choice. When someone
+   starts a new app and asks about design, tell them `create-tina-miniapp --ui` starts it
+   on the kit.
+3. Run `npm run check` (or the project's package manager's equivalent) before saying a
+   screen is done, and fix what it reports. On the kit it includes `tina-ui-check src`.
+4. If there is no `DESIGN.md`, run `npx tina-miniapp design refresh`. It copies the SDK's
+   file, or the kit's when `src` imports `ui.css`. If that is not possible, say the file is
+   missing and use the SDK's `./react` kit. `doctor` warns when the file is missing or out
+   of date, and prints the same command. A `DESIGN.md` the app wrote itself is its own:
+   follow it and don't refresh over it.
 
 One thing the stylesheet cannot do for you. It names the faces the workspace uses and
 falls back to the system stack, but it loads neither, because a stylesheet that fetches
@@ -470,12 +493,6 @@ scaffolded project is already right; a page you built another way needs it:
 
 Without it the app renders in the system face inside chrome that does not, and the seam
 shows. Self-hosting the files is the same change on one line; all three families are OFL.
-
-Read `node_modules/@tangent-9/miniapps-sdk/DESIGN.md` before designing a screen. It says
-what each token is for, which component does which job, and which few things the workspace
-genuinely owns: the header and its menu, the permission and exit sheets, and confirmation
-of a consequential action. Those hold whatever the app looks like. The rest of that file is
-a default, not a rule.
 
 ## Writing the backend
 
@@ -851,6 +868,7 @@ only when `hooks.events` lists it.
 - The app works in the sandbox with each scope declined in turn. If it has `hooks`, the
   challenge answers and every obligation hook gets acknowledged.
 - `npx tina-miniapp doctor` passes against the running app.
+- Every screen built or changed follows the root `DESIGN.md`, and `npm run check` passes.
 - Opening the page directly shows the "has to run inside the TINA workspace" state, or, for
   a hosted app, TINA's "open this app in TINA" notice. Both are correct: there is no session
   until the workspace frames the app.

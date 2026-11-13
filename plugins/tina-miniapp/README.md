@@ -6,6 +6,9 @@ The skill covers the whole path, from `npx @tangent-9/create-tina-miniapp` throu
 `tina-miniapp.json` manifest, the browser SDK and the app's own backend, the local sandbox,
 signing in and deploying to TINA's hosting, and `validate` / `doctor` / `submit`.
 
+On screens, it follows the app's root `DESIGN.md` and uses the SDK's optional UI kit
+(`@tangent-9/miniapps-sdk/ui`) only in apps that already import it.
+
 Claude loads it on its own when a request mentions a TINA mini app, the manifest, the SDK or
 the sandbox. You can also name it directly.
 
